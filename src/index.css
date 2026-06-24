@@ -76,6 +76,11 @@ button:disabled {
   margin-top: 0.5rem;
 }
 
+.pitch-status {
+  margin-top: 1rem;
+  font-size: 0.95rem;
+}
+
 .tuner-display {
   margin-top: 2rem;
   padding: 1.5rem;

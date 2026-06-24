@@ -1,1 +1,1 @@
-// Audio processing utilities (pitch detection, analysis) will live here.
+export { detectPitch, type PitchResult } from './autocorrelate'

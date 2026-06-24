@@ -4,6 +4,7 @@ export type MicStatus = 'idle' | 'requesting' | 'active' | 'error'
 
 interface UseMicrophoneResult {
   status: MicStatus
+  stream: MediaStream | null
   error: string | null
   start: () => Promise<void>
   stop: () => void
@@ -15,12 +16,14 @@ function stopStream(stream: MediaStream | null) {
 
 export function useMicrophone(): UseMicrophoneResult {
   const [status, setStatus] = useState<MicStatus>('idle')
+  const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
 
   const stop = useCallback(() => {
     stopStream(streamRef.current)
     streamRef.current = null
+    setStream(null)
     setStatus('idle')
     setError(null)
   }, [])
@@ -28,12 +31,20 @@ export function useMicrophone(): UseMicrophoneResult {
   const start = useCallback(async () => {
     stopStream(streamRef.current)
     streamRef.current = null
+    setStream(null)
     setStatus('requesting')
     setError(null)
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: true,
+        },
+      })
+      streamRef.current = mediaStream
+      setStream(mediaStream)
       setStatus('active')
     } catch (err) {
       const message =
@@ -47,5 +58,5 @@ export function useMicrophone(): UseMicrophoneResult {
     return () => stopStream(streamRef.current)
   }, [])
 
-  return { status, error, start, stop }
+  return { status, stream, error, start, stop }
 }
