@@ -83,8 +83,8 @@ export function TunerDisplay({
       : null
 
   const displayNote = autoMode
-    ? (detectedString ?? '—')
-    : (selectedString ?? '—')
+    ? (detectedString ?? '')
+    : (selectedString ?? '')
 
   const tuningResult =
     hasValidPitch && pitchFrequency !== null && resolvedPitch !== null
@@ -145,7 +145,7 @@ export function TunerDisplay({
           className={`tune-status tune-status--${tuneStatus}`}
           aria-live="polite"
         >
-          {formatTuneStatus(tuneStatus)}
+          {tuneStatus === 'idle' ? '' : formatTuneStatus(tuneStatus)}
         </p>
 
         <CentsMeter
