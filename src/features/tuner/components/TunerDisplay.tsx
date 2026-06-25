@@ -153,6 +153,7 @@ export function TunerDisplay({
           indicatorPercent={
             hasValidPitch && tuningResult !== null ? meterPosition : null
           }
+          isInTune={hysteresis.isInTune}
         />
       </div>
 
