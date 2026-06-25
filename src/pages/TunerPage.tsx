@@ -16,6 +16,8 @@ export function TunerPage() {
     responsiveFrequency,
     detectedString,
     heldFrequency,
+    chordNote,
+    isChord,
     status: detectionStatus,
   } = usePitchDetection({
     stream,
@@ -55,6 +57,8 @@ export function TunerPage() {
           responsiveFrequency={responsiveFrequency}
           detectedString={detectedString}
           heldFrequency={heldFrequency}
+          chordNote={chordNote}
+          isChord={isChord}
           detectionStatus={detectionStatus}
           isMicActive={isActive}
           autoMode={autoMode}
