@@ -198,7 +198,7 @@ export function formatRms(rms: number): string {
 
 const STATUS_LABELS: Record<TunerDetectionStatus, string> = {
   idle: 'Idle',
-  listening: 'Listening',
+  listening: '',
   'too-quiet': 'Too quiet',
   unstable: 'Unstable',
   stable: 'Stable',
@@ -243,11 +243,11 @@ export function formatTuneStatus(status: TuneStatus): string {
     case 'in-tune':
       return 'In tune'
     case 'flat':
-      return 'Flat'
+      return 'Tune up'
     case 'sharp':
-      return 'Sharp'
+      return 'Tune down'
     case 'listening':
-      return 'Listening'
+      return ''
     case 'idle':
       return '—'
   }
