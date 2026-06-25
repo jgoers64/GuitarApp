@@ -1,3 +1,4 @@
+import './rapidNoteDiagnostic'
 import { AUDIO_CONFIG, detectGuitarPitch } from '../src/lib/audio'
 import { TunerPitchTracker } from '../src/features/tuner/core/TunerPitchTracker'
 import { updateInTuneHysteresis } from '../src/features/tuner/utils/tuningHysteresis'
