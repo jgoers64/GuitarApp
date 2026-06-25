@@ -15,7 +15,8 @@ import { CentsMeter } from './CentsMeter'
 import { GuitarHeadstock } from './GuitarHeadstock'
 
 interface TunerDisplayProps {
-  stableFrequency: number | null
+  responsiveFrequency: number | null
+  detectedString: GuitarStringLabel | null
   heldFrequency: number | null
   detectionStatus: TunerDetectionStatus
   isMicActive: boolean
@@ -25,7 +26,8 @@ interface TunerDisplayProps {
 }
 
 export function TunerDisplay({
-  stableFrequency,
+  responsiveFrequency,
+  detectedString,
   heldFrequency,
   detectionStatus,
   isMicActive,
@@ -33,30 +35,49 @@ export function TunerDisplay({
   selectedString,
   onStringSelect,
 }: TunerDisplayProps) {
-  // Never let a raw attack-frame harmonic control the UI. Use the stabilized
-  // pitch first, then keep the last stable pitch during the display hold.
-  const pitchFrequency = stableFrequency ?? heldFrequency
+  const responsiveAutoString =
+    responsiveFrequency !== null
+      ? resolveGuitarPitch(responsiveFrequency).label
+      : null
+  const heldAutoString =
+    heldFrequency !== null ? resolveGuitarPitch(heldFrequency).label : null
+
+  const autoFrequency =
+    detectedString !== null &&
+    responsiveFrequency !== null &&
+    responsiveAutoString === detectedString
+      ? responsiveFrequency
+      : detectedString !== null &&
+          heldFrequency !== null &&
+          heldAutoString === detectedString
+        ? heldFrequency
+        : null
+
+  const pitchFrequency = autoMode
+    ? autoFrequency
+    : (responsiveFrequency ?? heldFrequency)
+  const targetString = autoMode ? detectedString : selectedString
 
   const hasDetection =
     isMicActive &&
     pitchFrequency !== null &&
-    (detectionStatus === 'stable' || detectionStatus === 'holding')
+    targetString !== null &&
+    (detectionStatus === 'unstable' ||
+      detectionStatus === 'stable' ||
+      detectionStatus === 'holding')
 
   const hasValidPitch =
     hasDetection &&
     pitchFrequency !== null &&
     isValidGuitarFrequency(pitchFrequency)
 
-  const canResolvePitch = autoMode || selectedString !== null
   const resolvedPitch =
-    hasValidPitch && pitchFrequency !== null && canResolvePitch
-      ? autoMode
-        ? resolveGuitarPitch(pitchFrequency)
-        : resolveGuitarPitch(pitchFrequency, selectedString)
+    hasValidPitch && pitchFrequency !== null && targetString !== null
+      ? resolveGuitarPitch(pitchFrequency, targetString)
       : null
 
   const displayNote = autoMode
-    ? (resolvedPitch?.label ?? '—')
+    ? (detectedString ?? '—')
     : (selectedString ?? '—')
 
   const tuningResult =
@@ -86,7 +107,7 @@ export function TunerDisplay({
           </p>
 
           <GuitarHeadstock
-            activeString={autoMode ? resolvedPitch?.label ?? null : selectedString}
+            activeString={autoMode ? detectedString : selectedString}
             onStringSelect={onStringSelect}
           />
         </div>
