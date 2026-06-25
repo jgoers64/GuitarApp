@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChordNoteTracker } from '../core/ChordNoteTracker'
 import {
   TunerPitchTracker,
   type TunerDetectionStatus,
@@ -6,7 +7,9 @@ import {
 import {
   AUDIO_CONFIG,
   calculateRms,
+  detectChordNote,
   detectGuitarPitch,
+  type ChromaticNoteName,
 } from '../../../lib/audio'
 import type { GuitarStringLabel } from '../utils/noteUtils'
 
@@ -24,6 +27,8 @@ interface PitchFrame {
   liveFrequency: number | null
   stableFrequency: number | null
   heldFrequency: number | null
+  chordNote: ChromaticNoteName | null
+  isChord: boolean
   rms: number
   status: TunerDetectionStatus
 }
@@ -39,9 +44,13 @@ const EMPTY_FRAME: PitchFrame = {
   liveFrequency: null,
   stableFrequency: null,
   heldFrequency: null,
+  chordNote: null,
+  isChord: false,
   rms: 0,
   status: 'idle',
 }
+
+const CHORD_SCAN_INTERVAL_FRAMES = 3
 
 export function usePitchDetection({
   stream,
@@ -60,7 +69,17 @@ export function usePitchDetection({
     let animationFrameId = 0
     let audioContext: AudioContext | null = null
     let cancelled = false
+    let chordScanFrame = 0
+    let chordActiveLastFrame = false
     const tracker = new TunerPitchTracker()
+    const chordTracker = new ChordNoteTracker()
+    let chordSnapshot = chordTracker.process({
+      note: null,
+      frequency: null,
+      confidence: 0,
+      strongNoteCount: 0,
+      isChordLike: false,
+    })
 
     const startDetection = async () => {
       audioContext = new AudioContext()
@@ -87,6 +106,9 @@ export function usePitchDetection({
 
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = AUDIO_CONFIG.FFT_SIZE
+      analyser.smoothingTimeConstant = 0.15
+      analyser.minDecibels = -110
+      analyser.maxDecibels = -20
 
       source.connect(highPass)
       highPass.connect(lowPass)
@@ -94,6 +116,7 @@ export function usePitchDetection({
       gain.connect(analyser)
 
       const buffer = new Float32Array(analyser.fftSize)
+      const spectrum = new Float32Array(analyser.frequencyBinCount)
       const sampleRate = audioContext.sampleRate
       setIsListening(true)
 
@@ -105,20 +128,56 @@ export function usePitchDetection({
           ? detectGuitarPitch(buffer, sampleRate)
           : { frequency: null, confidence: 0, stringLabel: null }
 
-        const snapshot = tracker.process({
-          now: performance.now(),
-          rms,
-          frequency: result.frequency,
-          confidence: result.confidence,
-        })
+        chordScanFrame += 1
+        if (gateOpen && chordScanFrame >= CHORD_SCAN_INTERVAL_FRAMES) {
+          chordScanFrame = 0
+          analyser.getFloatFrequencyData(spectrum)
+          chordSnapshot = chordTracker.process(
+            detectChordNote(
+              spectrum,
+              sampleRate,
+              analyser.fftSize,
+            ),
+          )
+        } else if (!gateOpen) {
+          chordSnapshot = chordTracker.process({
+            note: null,
+            frequency: null,
+            confidence: 0,
+            strongNoteCount: 0,
+            isChordLike: false,
+          })
+        }
+
+        if (chordSnapshot.active && !chordActiveLastFrame) {
+          tracker.reset()
+        }
+
+        const snapshot = chordSnapshot.active
+          ? {
+              detectedString: null,
+              frequency: null,
+              status: 'stable' as const,
+              isFrozen: false,
+            }
+          : tracker.process({
+              now: performance.now(),
+              rms,
+              frequency: result.frequency,
+              confidence: result.confidence,
+            })
+
+        chordActiveLastFrame = chordSnapshot.active
 
         setFrame({
-          rawFrequency: result.frequency,
+          rawFrequency: chordSnapshot.active ? null : result.frequency,
           detectedString: snapshot.detectedString,
           responsiveFrequency: snapshot.frequency,
-          liveFrequency: result.frequency,
+          liveFrequency: chordSnapshot.active ? null : result.frequency,
           stableFrequency: snapshot.frequency,
           heldFrequency: snapshot.frequency,
+          chordNote: chordSnapshot.note,
+          isChord: chordSnapshot.active,
           rms,
           status: snapshot.status,
         })
@@ -135,6 +194,7 @@ export function usePitchDetection({
       cancelled = true
       cancelAnimationFrame(animationFrameId)
       tracker.reset()
+      chordTracker.reset()
       setIsListening(false)
       setFrame(EMPTY_FRAME)
       void audioContext?.close()
