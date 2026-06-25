@@ -1,6 +1,7 @@
 import { AUDIO_CONFIG } from '../../../lib/audio'
 import {
   GUITAR_STRINGS,
+  getStringByLabel,
   isValidGuitarFrequency,
   resolveGuitarPitch,
   type GuitarStringLabel,
@@ -31,8 +32,13 @@ export interface PitchTrackerSnapshot {
 const RESPONSIVE_WINDOW_SIZE = 3
 const ATTACK_IGNORE_MS = 60
 const INITIAL_STRING_CONFIRM_FRAMES = 3
+const FRESH_ONSET_ADJACENT_CONFIRM_FRAMES = 2
+const FRESH_ONSET_JUMP_CONFIRM_FRAMES = 3
+const FRESH_ONSET_SWITCH_WINDOW_MS = 220
 const ADJACENT_STRING_CONFIRM_FRAMES = 3
 const SKIPPED_STRING_CONFIRM_FRAMES = 7
+const HARMONIC_JUMP_CONFIRM_FRAMES = 10
+const HARMONIC_TOLERANCE_CENTS = 80
 const PLUCK_END_SILENCE_MS = 220
 const FADE_FREEZE_MS = 160
 const ONSET_RMS_RATIO = 1.8
@@ -56,14 +62,39 @@ function median(values: number[]): number {
   return sorted[middle]
 }
 
-function requiredStringFrames(
-  current: GuitarStringLabel | null,
-  candidate: GuitarStringLabel,
-): number {
-  if (current === null) {
-    return INITIAL_STRING_CONFIRM_FRAMES
+function centsBetween(frequency: number, targetFrequency: number): number {
+  return 1200 * Math.log2(frequency / targetFrequency)
+}
+
+function isLikelyHarmonicError(
+  frequency: number,
+  confirmedString: GuitarStringLabel,
+): boolean {
+  const targetFrequency = getStringByLabel(confirmedString).frequency
+
+  for (let harmonic = 2; harmonic <= 4; harmonic++) {
+    const upperHarmonicCents = Math.abs(
+      centsBetween(frequency, targetFrequency * harmonic),
+    )
+    const lowerSubharmonicCents = Math.abs(
+      centsBetween(frequency * harmonic, targetFrequency),
+    )
+
+    if (
+      upperHarmonicCents <= HARMONIC_TOLERANCE_CENTS ||
+      lowerSubharmonicCents <= HARMONIC_TOLERANCE_CENTS
+    ) {
+      return true
+    }
   }
 
+  return false
+}
+
+function stringDistance(
+  current: GuitarStringLabel,
+  candidate: GuitarStringLabel,
+): number | null {
   const currentIndex = GUITAR_STRINGS.findIndex(
     (guitarString) => guitarString.label === current,
   )
@@ -72,16 +103,46 @@ function requiredStringFrames(
   )
 
   if (currentIndex < 0 || candidateIndex < 0) {
+    return null
+  }
+
+  return Math.abs(currentIndex - candidateIndex)
+}
+
+function requiredStringFrames(
+  current: GuitarStringLabel | null,
+  candidate: GuitarStringLabel,
+  frequency: number,
+  isFreshOnset: boolean,
+): number {
+  if (current === null) {
+    return INITIAL_STRING_CONFIRM_FRAMES
+  }
+
+  const distance = stringDistance(current, candidate)
+
+  if (isFreshOnset) {
+    return distance !== null && distance <= 1
+      ? FRESH_ONSET_ADJACENT_CONFIRM_FRAMES
+      : FRESH_ONSET_JUMP_CONFIRM_FRAMES
+  }
+
+  if (isLikelyHarmonicError(frequency, current)) {
+    return HARMONIC_JUMP_CONFIRM_FRAMES
+  }
+
+  if (distance === null) {
     return SKIPPED_STRING_CONFIRM_FRAMES
   }
 
-  return Math.abs(currentIndex - candidateIndex) <= 1
+  return distance <= 1
     ? ADJACENT_STRING_CONFIRM_FRAMES
     : SKIPPED_STRING_CONFIRM_FRAMES
 }
 
 export class TunerPitchTracker {
   private pluckStartedAt: number | null = null
+  private fastSwitchUntil: number | null = null
   private quietStartedAt: number | null = null
   private unreliableStartedAt: number | null = null
   private previousRms = 0
@@ -95,6 +156,7 @@ export class TunerPitchTracker {
 
   reset(): void {
     this.pluckStartedAt = null
+    this.fastSwitchUntil = null
     this.quietStartedAt = null
     this.unreliableStartedAt = null
     this.previousRms = 0
@@ -151,7 +213,11 @@ export class TunerPitchTracker {
           this.isFrozen = false
           const smoothedFrequency = this.addResponsiveReading(frequency)
           const candidateString = resolveGuitarPitch(smoothedFrequency).label
-          const acceptedString = this.updateConfirmedString(candidateString)
+          const acceptedString = this.updateConfirmedString(
+            candidateString,
+            smoothedFrequency,
+            now,
+          )
 
           if (acceptedString === candidateString) {
             this.trackedFrequency = smoothedFrequency
@@ -176,8 +242,17 @@ export class TunerPitchTracker {
   }
 
   private startNewPluck(now: number): void {
-    this.reset()
+    // Preserve the previous reliable note during the short pick attack so the
+    // UI never flashes blank between rapid plucks.
     this.pluckStartedAt = now
+    this.fastSwitchUntil = now + FRESH_ONSET_SWITCH_WINDOW_MS
+    this.quietStartedAt = null
+    this.unreliableStartedAt = null
+    this.peakRms = 0
+    this.pendingString = null
+    this.pendingStringFrames = 0
+    this.isFrozen = false
+    this.responsiveReadings.length = 0
   }
 
   private addResponsiveReading(frequency: number): number {
@@ -190,6 +265,8 @@ export class TunerPitchTracker {
 
   private updateConfirmedString(
     candidate: GuitarStringLabel,
+    frequency: number,
+    now: number,
   ): GuitarStringLabel | null {
     if (this.confirmedString === candidate) {
       this.pendingString = null
@@ -204,13 +281,22 @@ export class TunerPitchTracker {
       this.pendingStringFrames = 1
     }
 
-    if (
-      this.pendingStringFrames >=
-      requiredStringFrames(this.confirmedString, candidate)
-    ) {
+    const isFreshOnset =
+      this.fastSwitchUntil !== null && now <= this.fastSwitchUntil
+    const requiredFrames = requiredStringFrames(
+      this.confirmedString,
+      candidate,
+      frequency,
+      isFreshOnset,
+    )
+
+    if (this.pendingStringFrames >= requiredFrames) {
       this.confirmedString = candidate
       this.pendingString = null
       this.pendingStringFrames = 0
+      this.fastSwitchUntil = null
+      this.responsiveReadings.length = 0
+      this.responsiveReadings.push(frequency)
     }
 
     return this.confirmedString
