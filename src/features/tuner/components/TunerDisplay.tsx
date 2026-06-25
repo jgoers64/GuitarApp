@@ -1,5 +1,6 @@
 import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
 import {
+  IN_TUNE_CENTS,
   actualToDisplayCents,
   centsToMeterPercent,
   clampCents,
@@ -89,7 +90,11 @@ export function TunerDisplay({
 
   const actualCentsOff = tuningResult?.centsOff ?? null
   const displayCents =
-    actualCentsOff !== null ? actualToDisplayCents(actualCentsOff) : null
+    actualCentsOff === null
+      ? null
+      : Math.abs(actualCentsOff) <= IN_TUNE_CENTS
+        ? 0
+        : actualToDisplayCents(actualCentsOff)
   const tuneStatus: TuneStatus = !isMicActive
     ? 'idle'
     : hasValidPitch && tuningResult !== null
