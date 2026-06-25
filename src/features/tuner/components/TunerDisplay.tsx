@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import type { ChromaticNoteName } from '../../../lib/audio'
 import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
 import {
   actualToDisplayCents,
@@ -19,6 +20,8 @@ interface TunerDisplayProps {
   responsiveFrequency: number | null
   detectedString: GuitarStringLabel | null
   heldFrequency: number | null
+  chordNote: ChromaticNoteName | null
+  isChord: boolean
   detectionStatus: TunerDetectionStatus
   isMicActive: boolean
   autoMode: boolean
@@ -30,6 +33,8 @@ export function TunerDisplay({
   responsiveFrequency,
   detectedString,
   heldFrequency,
+  chordNote,
+  isChord,
   detectionStatus,
   isMicActive,
   autoMode,
@@ -38,6 +43,8 @@ export function TunerDisplay({
 }: TunerDisplayProps) {
   const [latchedInTuneString, setLatchedInTuneString] =
     useState<GuitarStringLabel | null>(null)
+
+  const showChordNote = autoMode && isChord && chordNote !== null
 
   // The meter follows the fast-smoothed pitch while the target string uses
   // short confirmation, preventing a one-frame harmonic from changing notes.
@@ -65,6 +72,7 @@ export function TunerDisplay({
   const targetString = autoMode ? detectedString : selectedString
 
   const hasDetection =
+    !showChordNote &&
     isMicActive &&
     pitchFrequency !== null &&
     targetString !== null &&
@@ -82,9 +90,11 @@ export function TunerDisplay({
       ? resolveGuitarPitch(pitchFrequency, targetString)
       : null
 
-  const displayNote = autoMode
-    ? (detectedString ?? '')
-    : (selectedString ?? '')
+  const displayNote = showChordNote
+    ? chordNote
+    : autoMode
+      ? (detectedString ?? '')
+      : (selectedString ?? '')
 
   const tuningResult =
     hasValidPitch && pitchFrequency !== null && resolvedPitch !== null
@@ -112,15 +122,16 @@ export function TunerDisplay({
         ? 0
         : actualToDisplayCents(actualCentsOff)
 
-  const tuneStatus: TuneStatus = !isMicActive
-    ? 'idle'
-    : hasValidPitch && tuningResult !== null
-      ? hysteresis.isInTune
-        ? 'in-tune'
-        : actualCentsOff !== null && actualCentsOff < 0
-          ? 'flat'
-          : 'sharp'
-      : 'listening'
+  const tuneStatus: TuneStatus =
+    !isMicActive || showChordNote
+      ? 'idle'
+      : hasValidPitch && tuningResult !== null
+        ? hysteresis.isInTune
+          ? 'in-tune'
+          : actualCentsOff !== null && actualCentsOff < 0
+            ? 'flat'
+            : 'sharp'
+        : 'listening'
 
   const meterPosition =
     displayCents !== null
@@ -136,7 +147,9 @@ export function TunerDisplay({
           </p>
 
           <GuitarHeadstock
-            activeString={autoMode ? detectedString : selectedString}
+            activeString={
+              showChordNote ? null : autoMode ? detectedString : selectedString
+            }
             onStringSelect={onStringSelect}
           />
         </div>
@@ -154,10 +167,11 @@ export function TunerDisplay({
             hasValidPitch && tuningResult !== null ? meterPosition : null
           }
           isInTune={hysteresis.isInTune}
+          hideIndicator={showChordNote}
         />
       </div>
 
-      {isMicActive && resolvedPitch !== null && (
+      {isMicActive && resolvedPitch !== null && !showChordNote && (
         <p className="tuner-debug">
           mic {pitchFrequency?.toFixed(1) ?? '—'} Hz → {resolvedPitch.note}{' '}
           (target {resolvedPitch.targetFrequency.toFixed(1)} Hz,{' '}
