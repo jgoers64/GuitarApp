@@ -14,9 +14,8 @@ export function TunerPage() {
 
   const { status, stream, error, start, stop } = useMicrophone()
   const {
-    rawFrequency,
+    stableFrequency,
     heldFrequency,
-    liveFrequency,
     status: detectionStatus,
   } = usePitchDetection({
     stream,
@@ -59,9 +58,8 @@ export function TunerPage() {
         )}
 
         <TunerDisplay
-          rawFrequency={rawFrequency}
+          stableFrequency={stableFrequency}
           heldFrequency={heldFrequency}
-          liveFrequency={liveFrequency}
           detectionStatus={detectionStatus}
           isMicActive={isActive}
           autoMode={autoMode}
