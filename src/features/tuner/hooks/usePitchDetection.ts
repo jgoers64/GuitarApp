@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react'
 import {
-  GUITAR_STRINGS,
-  getStringByLabel,
   isValidGuitarFrequency,
   resolveGuitarPitch,
   type GuitarStringLabel,
@@ -10,8 +8,6 @@ import {
   AUDIO_CONFIG,
   calculateRms,
   detectGuitarPitch,
-  DisplayHold,
-  PitchStabilityFilter,
 } from '../../../lib/audio'
 
 interface UsePitchDetectionOptions {
@@ -42,6 +38,16 @@ interface UsePitchDetectionResult extends PitchFrame {
   isListening: boolean
 }
 
+interface CaptureReading {
+  frequency: number
+  label: GuitarStringLabel
+}
+
+interface LockedPluck {
+  frequency: number
+  label: GuitarStringLabel
+}
+
 const EMPTY_FRAME: PitchFrame = {
   rawFrequency: null,
   detectedString: null,
@@ -54,90 +60,98 @@ const EMPTY_FRAME: PitchFrame = {
 }
 
 const RESPONSIVE_WINDOW_SIZE = 3
-const INITIAL_STRING_CONFIRM_FRAMES = 3
-const ADJACENT_STRING_CONFIRM_FRAMES = 3
-const SKIPPED_STRING_CONFIRM_FRAMES = 8
-const HARMONIC_JUMP_CONFIRM_FRAMES = 10
-const HARMONIC_TOLERANCE_CENTS = 80
-const STRING_UNLOCK_SILENCE_MS = 180
+/** Ignore the pick/noise transient before measuring the musical pitch. */
+const ATTACK_IGNORE_MS = 60
+/** Use only the earliest reliable readings from each pluck. */
+const CAPTURE_TARGET_READINGS = 5
+const CAPTURE_MIN_AGREEING_READINGS = 4
+const CAPTURE_TIMEOUT_MS = 320
+const CAPTURE_MAX_SPREAD_CENTS = 45
+const FORCED_CAPTURE_MAX_SPREAD_CENTS = 70
+/** A quiet gap marks the end of the current pluck. */
+const PLUCK_END_SILENCE_MS = 220
+/** A large volume jump allows a fresh pluck before the old one fully dies. */
+const ONSET_RMS_RATIO = 1.8
+const ONSET_MIN_RMS = AUDIO_CONFIG.RMS_GATE_THRESHOLD * 2.5
 
-function resolveStatus(
-  rms: number,
-  liveFrequency: number | null,
-  stableFrequency: number | null,
-  isHolding: boolean,
-): TunerDetectionStatus {
-  if (isHolding) {
-    return 'holding'
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2
   }
-  if (rms < AUDIO_CONFIG.RMS_GATE_THRESHOLD) {
-    return 'too-quiet'
-  }
-  if (stableFrequency !== null) {
-    return 'stable'
-  }
-  if (liveFrequency !== null) {
-    return 'unstable'
-  }
-  return 'listening'
+
+  return sorted[middle]
 }
 
 function centsBetween(frequency: number, targetFrequency: number): number {
   return 1200 * Math.log2(frequency / targetFrequency)
 }
 
-function isLikelyHarmonicError(
-  frequency: number,
-  confirmedString: GuitarStringLabel,
-): boolean {
-  const targetFrequency = getStringByLabel(confirmedString).frequency
+function chooseLockedPluck(
+  readings: CaptureReading[],
+  force: boolean,
+): LockedPluck | null {
+  const grouped = new Map<GuitarStringLabel, number[]>()
 
-  for (let harmonic = 2; harmonic <= 4; harmonic++) {
-    const upperHarmonicCents = Math.abs(
-      centsBetween(frequency, targetFrequency * harmonic),
-    )
-    const lowerSubharmonicCents = Math.abs(
-      centsBetween(frequency * harmonic, targetFrequency),
-    )
+  for (const reading of readings) {
+    const frequencies = grouped.get(reading.label) ?? []
+    frequencies.push(reading.frequency)
+    grouped.set(reading.label, frequencies)
+  }
 
-    if (
-      upperHarmonicCents <= HARMONIC_TOLERANCE_CENTS ||
-      lowerSubharmonicCents <= HARMONIC_TOLERANCE_CENTS
-    ) {
-      return true
+  let bestLabel: GuitarStringLabel | null = null
+  let bestFrequencies: number[] = []
+
+  for (const [label, frequencies] of grouped) {
+    if (frequencies.length > bestFrequencies.length) {
+      bestLabel = label
+      bestFrequencies = frequencies
     }
   }
 
-  return false
+  const minimumReadings = force ? 3 : CAPTURE_MIN_AGREEING_READINGS
+  if (bestLabel === null || bestFrequencies.length < minimumReadings) {
+    return null
+  }
+
+  const capturedFrequency = median(bestFrequencies)
+  const maxSpread = Math.max(
+    ...bestFrequencies.map((frequency) =>
+      Math.abs(centsBetween(frequency, capturedFrequency)),
+    ),
+  )
+  const allowedSpread = force
+    ? FORCED_CAPTURE_MAX_SPREAD_CENTS
+    : CAPTURE_MAX_SPREAD_CENTS
+
+  if (maxSpread > allowedSpread) {
+    return null
+  }
+
+  return {
+    frequency: capturedFrequency,
+    label: bestLabel,
+  }
 }
 
-function getRequiredConfirmationFrames(
-  confirmedString: GuitarStringLabel | null,
-  candidateString: GuitarStringLabel,
-  frequency: number,
-): number {
-  if (confirmedString === null) {
-    return INITIAL_STRING_CONFIRM_FRAMES
+function getStatus(
+  rms: number,
+  liveFrequency: number | null,
+  lockedFrequency: number | null,
+  gateOpen: boolean,
+): TunerDetectionStatus {
+  if (lockedFrequency !== null) {
+    return gateOpen ? 'stable' : 'holding'
   }
-
-  if (isLikelyHarmonicError(frequency, confirmedString)) {
-    return HARMONIC_JUMP_CONFIRM_FRAMES
+  if (rms < AUDIO_CONFIG.RMS_GATE_THRESHOLD) {
+    return 'too-quiet'
   }
-
-  const confirmedIndex = GUITAR_STRINGS.findIndex(
-    (guitarString) => guitarString.label === confirmedString,
-  )
-  const candidateIndex = GUITAR_STRINGS.findIndex(
-    (guitarString) => guitarString.label === candidateString,
-  )
-
-  if (confirmedIndex < 0 || candidateIndex < 0) {
-    return SKIPPED_STRING_CONFIRM_FRAMES
+  if (liveFrequency !== null) {
+    return 'unstable'
   }
-
-  return Math.abs(candidateIndex - confirmedIndex) <= 1
-    ? ADJACENT_STRING_CONFIRM_FRAMES
-    : SKIPPED_STRING_CONFIRM_FRAMES
+  return 'listening'
 }
 
 export function usePitchDetection({
@@ -158,24 +172,26 @@ export function usePitchDetection({
     let audioContext: AudioContext | null = null
     let cancelled = false
 
-    let confirmedString: GuitarStringLabel | null = null
-    let pendingString: GuitarStringLabel | null = null
-    let pendingFrames = 0
+    let pluckStartedAt: number | null = null
     let quietStartedAt: number | null = null
+    let previousRms = 0
+    let lockedFrequency: number | null = null
+    let lockedString: GuitarStringLabel | null = null
     const responsiveReadings: number[] = []
+    const captureReadings: CaptureReading[] = []
 
-    const stabilityFilter = new PitchStabilityFilter(
-      AUDIO_CONFIG.STABILITY_WINDOW_SIZE,
-      AUDIO_CONFIG.STABILITY_MIN_COUNT,
-      AUDIO_CONFIG.STABILITY_MAX_CENTS,
-    )
-    const displayHold = new DisplayHold(AUDIO_CONFIG.HOLD_DURATION_MS)
-
-    const resetStringTracking = () => {
-      confirmedString = null
-      pendingString = null
-      pendingFrames = 0
+    const resetPluck = () => {
+      pluckStartedAt = null
+      quietStartedAt = null
+      lockedFrequency = null
+      lockedString = null
       responsiveReadings.length = 0
+      captureReadings.length = 0
+    }
+
+    const startNewPluck = (now: number) => {
+      resetPluck()
+      pluckStartedAt = now
     }
 
     const addResponsiveReading = (frequency: number): number => {
@@ -183,39 +199,7 @@ export function usePitchDetection({
       while (responsiveReadings.length > RESPONSIVE_WINDOW_SIZE) {
         responsiveReadings.shift()
       }
-
-      const sorted = [...responsiveReadings].sort((a, b) => a - b)
-      return sorted[Math.floor((sorted.length - 1) / 2)] ?? frequency
-    }
-
-    const updateConfirmedString = (
-      label: GuitarStringLabel,
-      frequency: number,
-    ) => {
-      if (confirmedString === label) {
-        pendingString = null
-        pendingFrames = 0
-        return
-      }
-
-      if (pendingString === label) {
-        pendingFrames += 1
-      } else {
-        pendingString = label
-        pendingFrames = 1
-      }
-
-      const requiredFrames = getRequiredConfirmationFrames(
-        confirmedString,
-        label,
-        frequency,
-      )
-
-      if (pendingFrames >= requiredFrames) {
-        confirmedString = label
-        pendingString = null
-        pendingFrames = 0
-      }
+      return median(responsiveReadings)
     }
 
     const startDetection = async () => {
@@ -259,10 +243,20 @@ export function usePitchDetection({
         const gateOpen = rms >= AUDIO_CONFIG.RMS_GATE_THRESHOLD
         const now = performance.now()
 
+        const isFreshOnset =
+          gateOpen &&
+          (pluckStartedAt === null ||
+            (lockedFrequency !== null &&
+              previousRms > 0 &&
+              rms >= ONSET_MIN_RMS &&
+              rms >= previousRms * ONSET_RMS_RATIO))
+
+        if (isFreshOnset) {
+          startNewPluck(now)
+        }
+
         let rawFrequency: number | null = null
-        let responsiveFrequency: number | null = null
         let liveFrequency: number | null = null
-        let stableFrequency: number | null = null
 
         if (gateOpen) {
           quietStartedAt = null
@@ -270,52 +264,64 @@ export function usePitchDetection({
 
           if (
             result.frequency !== null &&
-            result.stringLabel !== null &&
             result.confidence >= AUDIO_CONFIG.MIN_PITCH_CONFIDENCE &&
             isValidGuitarFrequency(result.frequency)
           ) {
             rawFrequency = result.frequency
             liveFrequency = result.frequency
-            responsiveFrequency = addResponsiveReading(result.frequency)
-            stableFrequency = stabilityFilter.add(result.frequency)
 
-            const responsiveString = resolveGuitarPitch(
-              responsiveFrequency,
-            ).label
-            updateConfirmedString(responsiveString, responsiveFrequency)
-          } else {
-            stabilityFilter.clear()
+            if (lockedFrequency === null && pluckStartedAt !== null) {
+              const smoothedFrequency = addResponsiveReading(result.frequency)
+              const elapsed = now - pluckStartedAt
+
+              if (elapsed >= ATTACK_IGNORE_MS) {
+                captureReadings.push({
+                  frequency: smoothedFrequency,
+                  label: resolveGuitarPitch(smoothedFrequency).label,
+                })
+
+                const forceCapture = elapsed >= CAPTURE_TIMEOUT_MS
+                const hasTargetReadings =
+                  captureReadings.length >= CAPTURE_TARGET_READINGS
+
+                if (hasTargetReadings || forceCapture) {
+                  const locked = chooseLockedPluck(
+                    captureReadings,
+                    forceCapture,
+                  )
+
+                  if (locked !== null) {
+                    lockedFrequency = locked.frequency
+                    lockedString = locked.label
+                  }
+                }
+              }
+            }
           }
-        } else {
-          stabilityFilter.clear()
-          responsiveReadings.length = 0
-
+        } else if (pluckStartedAt !== null) {
           if (quietStartedAt === null) {
             quietStartedAt = now
-          } else if (now - quietStartedAt >= STRING_UNLOCK_SILENCE_MS) {
-            resetStringTracking()
+          } else if (now - quietStartedAt >= PLUCK_END_SILENCE_MS) {
+            resetPluck()
           }
         }
 
-        const hold = displayHold.update(stableFrequency, now)
-        const status = resolveStatus(
-          rms,
-          liveFrequency,
-          stableFrequency,
-          hold.isHolding,
-        )
+        const status = getStatus(rms, liveFrequency, lockedFrequency, gateOpen)
 
         setFrame({
           rawFrequency,
-          detectedString: confirmedString,
-          responsiveFrequency,
+          detectedString: lockedString,
+          // Once captured, this value intentionally remains fixed until the
+          // current pluck ends. The fading tail cannot change the verdict.
+          responsiveFrequency: lockedFrequency,
           liveFrequency,
-          stableFrequency,
-          heldFrequency: hold.frequency,
+          stableFrequency: lockedFrequency,
+          heldFrequency: lockedFrequency,
           rms,
           status,
         })
 
+        previousRms = rms
         animationFrameId = requestAnimationFrame(analyze)
       }
 
@@ -327,9 +333,7 @@ export function usePitchDetection({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationFrameId)
-      stabilityFilter.clear()
-      displayHold.reset()
-      resetStringTracking()
+      resetPluck()
       setIsListening(false)
       setFrame(EMPTY_FRAME)
       void audioContext?.close()
