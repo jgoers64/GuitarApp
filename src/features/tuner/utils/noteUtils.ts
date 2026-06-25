@@ -7,13 +7,14 @@ export const GUITAR_STRINGS = GUITAR_OPEN_STRINGS
 
 export type GuitarStringLabel = (typeof GUITAR_STRINGS)[number]['label']
 
-export const MIN_GUITAR_DETECT_HZ = 60
+export const MIN_GUITAR_DETECT_HZ = 45
 export const MAX_GUITAR_DETECT_HZ = 700
 
 /** Actual cents within this range count as "In tune". */
 export const IN_TUNE_CENTS = 5
 export const CENTS_DISPLAY_SCALE = 10
-export const CENTS_METER_RANGE = 20
+/** Displayed midpoint between adjacent strings is at most about ±25. */
+export const CENTS_METER_RANGE = 25
 
 export function isValidGuitarFrequency(frequency: number): boolean {
   return frequency >= MIN_GUITAR_DETECT_HZ && frequency <= MAX_GUITAR_DETECT_HZ
