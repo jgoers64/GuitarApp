@@ -11,7 +11,7 @@ export const MIN_GUITAR_DETECT_HZ = 45
 export const MAX_GUITAR_DETECT_HZ = 700
 
 /** Actual cents within this range count as "In tune". */
-export const IN_TUNE_CENTS = 5
+export const IN_TUNE_CENTS = 10
 export const CENTS_DISPLAY_SCALE = 10
 /** Displayed midpoint between adjacent strings is at most about ±25. */
 export const CENTS_METER_RANGE = 25
