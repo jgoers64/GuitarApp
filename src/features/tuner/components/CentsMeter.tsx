@@ -3,12 +3,21 @@ import { CENTS_METER_RANGE, formatIndicatorCents } from '../utils/noteUtils'
 interface CentsMeterProps {
   centsOff: number | null
   indicatorPercent: number | null
+  isInTune: boolean
 }
 
-export function CentsMeter({ centsOff, indicatorPercent }: CentsMeterProps) {
+export function CentsMeter({
+  centsOff,
+  indicatorPercent,
+  isInTune,
+}: CentsMeterProps) {
   const left = `${indicatorPercent ?? 50}%`
   const label =
-    centsOff !== null ? formatIndicatorCents(centsOff) : null
+    centsOff !== null
+      ? isInTune
+        ? '✓'
+        : formatIndicatorCents(centsOff)
+      : null
 
   return (
     <div className="cents-meter" aria-label="Cents deviation meter">
