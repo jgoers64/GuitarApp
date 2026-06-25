@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { GuitarStringLabel } from '../utils/noteUtils'
-import { isValidGuitarFrequency } from '../utils/noteUtils'
+import {
+  isValidGuitarFrequency,
+  resolveGuitarPitch,
+} from '../utils/noteUtils'
 import {
   AUDIO_CONFIG,
   calculateRms,
@@ -25,6 +28,7 @@ export type TunerDetectionStatus =
 interface PitchFrame {
   rawFrequency: number | null
   detectedString: GuitarStringLabel | null
+  responsiveFrequency: number | null
   liveFrequency: number | null
   stableFrequency: number | null
   heldFrequency: number | null
@@ -39,6 +43,7 @@ interface UsePitchDetectionResult extends PitchFrame {
 const EMPTY_FRAME: PitchFrame = {
   rawFrequency: null,
   detectedString: null,
+  responsiveFrequency: null,
   liveFrequency: null,
   stableFrequency: null,
   heldFrequency: null,
@@ -46,7 +51,8 @@ const EMPTY_FRAME: PitchFrame = {
   status: 'idle',
 }
 
-const STRING_LOCK_FRAMES = 3
+const RESPONSIVE_WINDOW_SIZE = 3
+const STRING_CONFIRM_FRAMES = 2
 const STRING_UNLOCK_SILENCE_MS = 180
 
 function resolveStatus(
@@ -88,10 +94,11 @@ export function usePitchDetection({
     let audioContext: AudioContext | null = null
     let cancelled = false
 
-    let lockedString: GuitarStringLabel | null = null
-    let candidateString: GuitarStringLabel | null = null
-    let candidateFrames = 0
+    let confirmedString: GuitarStringLabel | null = null
+    let pendingString: GuitarStringLabel | null = null
+    let pendingFrames = 0
     let quietStartedAt: number | null = null
+    const responsiveReadings: number[] = []
 
     const stabilityFilter = new PitchStabilityFilter(
       AUDIO_CONFIG.STABILITY_WINDOW_SIZE,
@@ -100,26 +107,41 @@ export function usePitchDetection({
     )
     const displayHold = new DisplayHold(AUDIO_CONFIG.HOLD_DURATION_MS)
 
-    const resetStringLock = () => {
-      lockedString = null
-      candidateString = null
-      candidateFrames = 0
+    const resetStringTracking = () => {
+      confirmedString = null
+      pendingString = null
+      pendingFrames = 0
+      responsiveReadings.length = 0
     }
 
-    const updateStringLock = (label: GuitarStringLabel) => {
-      if (lockedString !== null) {
+    const addResponsiveReading = (frequency: number): number => {
+      responsiveReadings.push(frequency)
+      while (responsiveReadings.length > RESPONSIVE_WINDOW_SIZE) {
+        responsiveReadings.shift()
+      }
+
+      const sorted = [...responsiveReadings].sort((a, b) => a - b)
+      return sorted[Math.floor((sorted.length - 1) / 2)] ?? frequency
+    }
+
+    const updateConfirmedString = (label: GuitarStringLabel) => {
+      if (confirmedString === label) {
+        pendingString = null
+        pendingFrames = 0
         return
       }
 
-      if (candidateString === label) {
-        candidateFrames += 1
+      if (pendingString === label) {
+        pendingFrames += 1
       } else {
-        candidateString = label
-        candidateFrames = 1
+        pendingString = label
+        pendingFrames = 1
       }
 
-      if (candidateFrames >= STRING_LOCK_FRAMES) {
-        lockedString = label
+      if (pendingFrames >= STRING_CONFIRM_FRAMES) {
+        confirmedString = label
+        pendingString = null
+        pendingFrames = 0
       }
     }
 
@@ -165,7 +187,7 @@ export function usePitchDetection({
         const now = performance.now()
 
         let rawFrequency: number | null = null
-        let detectedString: GuitarStringLabel | null = lockedString
+        let responsiveFrequency: number | null = null
         let liveFrequency: number | null = null
         let stableFrequency: number | null = null
 
@@ -179,22 +201,26 @@ export function usePitchDetection({
             result.confidence >= AUDIO_CONFIG.MIN_PITCH_CONFIDENCE &&
             isValidGuitarFrequency(result.frequency)
           ) {
-            updateStringLock(result.stringLabel)
             rawFrequency = result.frequency
-            detectedString = lockedString ?? result.stringLabel
             liveFrequency = result.frequency
+            responsiveFrequency = addResponsiveReading(result.frequency)
             stableFrequency = stabilityFilter.add(result.frequency)
+
+            const responsiveString = resolveGuitarPitch(
+              responsiveFrequency,
+            ).label
+            updateConfirmedString(responsiveString)
           } else {
             stabilityFilter.clear()
           }
         } else {
           stabilityFilter.clear()
+          responsiveReadings.length = 0
 
           if (quietStartedAt === null) {
             quietStartedAt = now
           } else if (now - quietStartedAt >= STRING_UNLOCK_SILENCE_MS) {
-            resetStringLock()
-            detectedString = null
+            resetStringTracking()
           }
         }
 
@@ -208,7 +234,8 @@ export function usePitchDetection({
 
         setFrame({
           rawFrequency,
-          detectedString,
+          detectedString: confirmedString,
+          responsiveFrequency,
           liveFrequency,
           stableFrequency,
           heldFrequency: hold.frequency,
@@ -229,7 +256,7 @@ export function usePitchDetection({
       cancelAnimationFrame(animationFrameId)
       stabilityFilter.clear()
       displayHold.reset()
-      resetStringLock()
+      resetStringTracking()
       setIsListening(false)
       setFrame(EMPTY_FRAME)
       void audioContext?.close()
