@@ -4,7 +4,7 @@ import {
 } from '../music/guitarStrings'
 import { centsDifference } from '../music/frequency'
 
-const MIN_MATCH_HZ = 60
+const MIN_MATCH_HZ = 45
 const MAX_MATCH_HZ = 700
 
 type GuitarOpenString = (typeof GUITAR_OPEN_STRINGS)[number]
@@ -22,9 +22,9 @@ export interface GuitarStringMatch {
 /**
  * Match a detected fundamental to the nearest standard-tuning open string.
  *
- * This function intentionally does not divide the detected frequency by
- * 2, 3, or 4. Doing that without harmonic evidence causes real notes to be
- * misidentified as harmonics of lower strings (for example, 220 Hz as A2).
+ * Interior strings change at the midpoint between adjacent open-string
+ * frequencies. Low E may continue below the lower midpoint, and high E may
+ * continue above the upper midpoint because there is no string beyond them.
  */
 export function matchGuitarString(
   frequency: number,
