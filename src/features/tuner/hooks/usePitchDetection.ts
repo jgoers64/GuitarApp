@@ -46,6 +46,9 @@ const EMPTY_FRAME: PitchFrame = {
   status: 'idle',
 }
 
+const STRING_LOCK_FRAMES = 3
+const STRING_UNLOCK_SILENCE_MS = 180
+
 function resolveStatus(
   rms: number,
   liveFrequency: number | null,
@@ -85,12 +88,40 @@ export function usePitchDetection({
     let audioContext: AudioContext | null = null
     let cancelled = false
 
+    let lockedString: GuitarStringLabel | null = null
+    let candidateString: GuitarStringLabel | null = null
+    let candidateFrames = 0
+    let quietStartedAt: number | null = null
+
     const stabilityFilter = new PitchStabilityFilter(
       AUDIO_CONFIG.STABILITY_WINDOW_SIZE,
       AUDIO_CONFIG.STABILITY_MIN_COUNT,
       AUDIO_CONFIG.STABILITY_MAX_CENTS,
     )
     const displayHold = new DisplayHold(AUDIO_CONFIG.HOLD_DURATION_MS)
+
+    const resetStringLock = () => {
+      lockedString = null
+      candidateString = null
+      candidateFrames = 0
+    }
+
+    const updateStringLock = (label: GuitarStringLabel) => {
+      if (lockedString !== null) {
+        return
+      }
+
+      if (candidateString === label) {
+        candidateFrames += 1
+      } else {
+        candidateString = label
+        candidateFrames = 1
+      }
+
+      if (candidateFrames >= STRING_LOCK_FRAMES) {
+        lockedString = label
+      }
+    }
 
     const startDetection = async () => {
       audioContext = new AudioContext()
@@ -131,22 +162,26 @@ export function usePitchDetection({
         analyser.getFloatTimeDomainData(buffer)
         const rms = calculateRms(buffer)
         const gateOpen = rms >= AUDIO_CONFIG.RMS_GATE_THRESHOLD
+        const now = performance.now()
 
         let rawFrequency: number | null = null
-        let detectedString: GuitarStringLabel | null = null
+        let detectedString: GuitarStringLabel | null = lockedString
         let liveFrequency: number | null = null
         let stableFrequency: number | null = null
 
         if (gateOpen) {
+          quietStartedAt = null
           const result = detectGuitarPitch(buffer, sampleRate)
+
           if (
             result.frequency !== null &&
             result.stringLabel !== null &&
             result.confidence >= AUDIO_CONFIG.MIN_PITCH_CONFIDENCE &&
             isValidGuitarFrequency(result.frequency)
           ) {
+            updateStringLock(result.stringLabel)
             rawFrequency = result.frequency
-            detectedString = result.stringLabel
+            detectedString = lockedString ?? result.stringLabel
             liveFrequency = result.frequency
             stableFrequency = stabilityFilter.add(result.frequency)
           } else {
@@ -154,9 +189,16 @@ export function usePitchDetection({
           }
         } else {
           stabilityFilter.clear()
+
+          if (quietStartedAt === null) {
+            quietStartedAt = now
+          } else if (now - quietStartedAt >= STRING_UNLOCK_SILENCE_MS) {
+            resetStringLock()
+            detectedString = null
+          }
         }
 
-        const hold = displayHold.update(stableFrequency, performance.now())
+        const hold = displayHold.update(stableFrequency, now)
         const status = resolveStatus(
           rms,
           liveFrequency,
@@ -187,6 +229,7 @@ export function usePitchDetection({
       cancelAnimationFrame(animationFrameId)
       stabilityFilter.clear()
       displayHold.reset()
+      resetStringLock()
       setIsListening(false)
       setFrame(EMPTY_FRAME)
       void audioContext?.close()
