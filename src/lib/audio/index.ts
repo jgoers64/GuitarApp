@@ -2,6 +2,11 @@ export { AUDIO_CONFIG } from './config'
 export { calculateRms } from './rms'
 export { detectPitch, type PitchResult } from './autocorrelate'
 export { detectGuitarPitch, type GuitarPitchResult } from './detectGuitarPitch'
+export {
+  detectChordNote,
+  type ChordNoteResult,
+  type ChromaticNoteName,
+} from './detectChordNote'
 export { PitchStabilityFilter } from './pitchStability'
 export { DisplayHold } from './displayHold'
 export {
