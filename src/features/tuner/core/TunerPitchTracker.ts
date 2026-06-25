@@ -5,7 +5,14 @@ import {
   resolveGuitarPitch,
   type GuitarStringLabel,
 } from '../utils/noteUtils'
-import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
+
+export type TunerDetectionStatus =
+  | 'idle'
+  | 'listening'
+  | 'too-quiet'
+  | 'unstable'
+  | 'stable'
+  | 'holding'
 
 export interface PitchObservation {
   now: number
