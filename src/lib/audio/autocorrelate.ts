@@ -1,11 +1,9 @@
+import { AUDIO_CONFIG } from './config'
+
 export interface PitchResult {
   frequency: number | null
   confidence: number
 }
-
-const MIN_FREQUENCY = 70
-const MAX_FREQUENCY = 500
-const MIN_RMS = 0.0008
 
 export function detectPitch(
   buffer: Float32Array,
@@ -18,10 +16,6 @@ export function detectPitch(
     rms += buffer[i] * buffer[i]
   }
   rms = Math.sqrt(rms / size)
-
-  if (rms < MIN_RMS) {
-    return { frequency: null, confidence: 0 }
-  }
 
   let start = 0
   let end = size - 1
@@ -53,43 +47,64 @@ export function detectPitch(
     correlations[lag] = sum
   }
 
-  let dip = 0
-  while (dip + 1 < trimmedSize && correlations[dip] > correlations[dip + 1]) {
-    dip++
-  }
+  const minLag = Math.max(
+    2,
+    Math.floor(sampleRate / AUDIO_CONFIG.MAX_FREQUENCY_HZ),
+  )
+  const maxLag = Math.min(
+    trimmedSize - 1,
+    Math.ceil(sampleRate / AUDIO_CONFIG.MIN_FREQUENCY_HZ),
+  )
 
-  let peakLag = dip
-  let peakValue = correlations[dip]
-
-  for (let lag = dip; lag < trimmedSize; lag++) {
-    if (correlations[lag] > peakValue) {
-      peakValue = correlations[lag]
-      peakLag = lag
-    }
-  }
-
-  if (peakLag === 0) {
+  if (minLag >= maxLag) {
     return { frequency: null, confidence: 0 }
   }
 
-  let refinedLag = peakLag
-  if (peakLag > 0 && peakLag < trimmedSize - 1) {
-    const prev = correlations[peakLag - 1]
-    const current = correlations[peakLag]
-    const next = correlations[peakLag + 1]
+  let globalMaxLag = minLag
+  let globalMaxValue = correlations[minLag] ?? 0
+
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const value = correlations[lag] ?? 0
+    if (value > globalMaxValue) {
+      globalMaxValue = value
+      globalMaxLag = lag
+    }
+  }
+
+  if (globalMaxValue <= 0) {
+    return { frequency: null, confidence: 0 }
+  }
+
+  // Prefer the lowest frequency (longest period) with a strong correlation.
+  let chosenLag = globalMaxLag
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    if ((correlations[lag] ?? 0) >= globalMaxValue * 0.82) {
+      chosenLag = lag
+    }
+  }
+
+  let refinedLag = chosenLag
+  const peakIndex = Math.round(chosenLag)
+  if (peakIndex > 0 && peakIndex < trimmedSize - 1) {
+    const prev = correlations[peakIndex - 1]
+    const current = correlations[peakIndex]
+    const next = correlations[peakIndex + 1]
     const shift = (next - prev) / (2 * (2 * current - next - prev))
     if (Number.isFinite(shift)) {
-      refinedLag = peakLag + shift
+      refinedLag = chosenLag + shift
     }
   }
 
   const frequency = sampleRate / refinedLag
 
-  if (frequency < MIN_FREQUENCY || frequency > MAX_FREQUENCY) {
+  if (
+    frequency < AUDIO_CONFIG.MIN_FREQUENCY_HZ ||
+    frequency > AUDIO_CONFIG.MAX_FREQUENCY_HZ
+  ) {
     return { frequency: null, confidence: 0 }
   }
 
-  const confidence = Math.min(1, peakValue / correlations[0])
+  const confidence = Math.min(1, globalMaxValue / (correlations[0] || 1))
 
   return { frequency, confidence }
 }

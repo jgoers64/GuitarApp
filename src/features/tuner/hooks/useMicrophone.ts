@@ -14,6 +14,22 @@ function stopStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop())
 }
 
+const HTTPS_REQUIRED_MESSAGE =
+  'Microphone access requires HTTPS. Deploy the app or open it from a secure URL.'
+
+function getMicrophoneAvailabilityError(): string | null {
+  if (!window.isSecureContext) {
+    return HTTPS_REQUIRED_MESSAGE
+  }
+  if (!navigator.mediaDevices) {
+    return HTTPS_REQUIRED_MESSAGE
+  }
+  if (typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    return HTTPS_REQUIRED_MESSAGE
+  }
+  return null
+}
+
 export function useMicrophone(): UseMicrophoneResult {
   const [status, setStatus] = useState<MicStatus>('idle')
   const [stream, setStream] = useState<MediaStream | null>(null)
@@ -35,12 +51,19 @@ export function useMicrophone(): UseMicrophoneResult {
     setStatus('requesting')
     setError(null)
 
+    const availabilityError = getMicrophoneAvailabilityError()
+    if (availabilityError !== null) {
+      setError(availabilityError)
+      setStatus('error')
+      return
+    }
+
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: true,
+          autoGainControl: false,
         },
       })
       streamRef.current = mediaStream

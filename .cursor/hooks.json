@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/deploy-after-edit.mjs afterFileEdit",
+        "timeout": 30
+      }
+    ],
+    "afterTabFileEdit": [
+      {
+        "command": "node .cursor/hooks/deploy-after-edit.mjs afterTabFileEdit",
+        "timeout": 30
+      }
+    ],
+    "stop": [
+      {
+        "command": "node .cursor/hooks/deploy-after-edit.mjs stop",
+        "timeout": 30
+      }
+    ]
+  }
+}

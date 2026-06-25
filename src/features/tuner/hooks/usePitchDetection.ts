@@ -1,45 +1,77 @@
 import { useEffect, useState } from 'react'
-import { detectPitch } from '../../../lib/audio'
+import type { GuitarStringLabel } from '../utils/noteUtils'
+import { isValidGuitarFrequency } from '../utils/noteUtils'
+import {
+  AUDIO_CONFIG,
+  calculateRms,
+  detectGuitarPitch,
+  DisplayHold,
+  PitchStabilityFilter,
+} from '../../../lib/audio'
 
 interface UsePitchDetectionOptions {
   stream: MediaStream | null
   enabled: boolean
 }
 
-interface UsePitchDetectionResult {
-  frequency: number | null
-  isListening: boolean
-  confidence: number | null
-  statusMessage: string
+export type TunerDetectionStatus =
+  | 'idle'
+  | 'listening'
+  | 'too-quiet'
+  | 'unstable'
+  | 'stable'
+  | 'holding'
+
+interface PitchFrame {
+  rawFrequency: number | null
+  detectedString: GuitarStringLabel | null
+  liveFrequency: number | null
+  stableFrequency: number | null
+  heldFrequency: number | null
+  rms: number
+  status: TunerDetectionStatus
 }
 
-const CONFIDENCE_THRESHOLD = 0.45
-const INPUT_GAIN = 5
-const FFT_SIZE = 4096
+interface UsePitchDetectionResult extends PitchFrame {
+  isListening: boolean
+}
 
-function getStatusMessage(
-  isListening: boolean,
-  frequency: number | null,
-  confidence: number | null,
-): string {
-  if (!isListening) {
-    return 'Pitch detection inactive'
+const EMPTY_FRAME: PitchFrame = {
+  rawFrequency: null,
+  detectedString: null,
+  liveFrequency: null,
+  stableFrequency: null,
+  heldFrequency: null,
+  rms: 0,
+  status: 'idle',
+}
+
+function resolveStatus(
+  rms: number,
+  liveFrequency: number | null,
+  stableFrequency: number | null,
+  isHolding: boolean,
+): TunerDetectionStatus {
+  if (isHolding) {
+    return 'holding'
   }
-  if (frequency === null) {
-    return 'Listening — play a note'
+  if (rms < AUDIO_CONFIG.RMS_GATE_THRESHOLD) {
+    return 'too-quiet'
   }
-  if (confidence !== null && confidence < CONFIDENCE_THRESHOLD) {
-    return 'Weak signal — try playing louder'
+  if (stableFrequency !== null) {
+    return 'stable'
   }
-  return 'Pitch detected'
+  if (liveFrequency !== null) {
+    return 'unstable'
+  }
+  return 'listening'
 }
 
 export function usePitchDetection({
   stream,
   enabled,
 }: UsePitchDetectionOptions): UsePitchDetectionResult {
-  const [frequency, setFrequency] = useState<number | null>(null)
-  const [confidence, setConfidence] = useState<number | null>(null)
+  const [frame, setFrame] = useState<PitchFrame>(EMPTY_FRAME)
   const [isListening, setIsListening] = useState(false)
 
   const isActive = enabled && stream !== null
@@ -53,6 +85,13 @@ export function usePitchDetection({
     let audioContext: AudioContext | null = null
     let cancelled = false
 
+    const stabilityFilter = new PitchStabilityFilter(
+      AUDIO_CONFIG.STABILITY_WINDOW_SIZE,
+      AUDIO_CONFIG.STABILITY_MIN_COUNT,
+      AUDIO_CONFIG.STABILITY_MAX_CENTS,
+    )
+    const displayHold = new DisplayHold(AUDIO_CONFIG.HOLD_DURATION_MS)
+
     const startDetection = async () => {
       audioContext = new AudioContext()
       await audioContext.resume()
@@ -63,11 +102,25 @@ export function usePitchDetection({
       }
 
       const source = audioContext.createMediaStreamSource(stream)
+      const highPass = audioContext.createBiquadFilter()
+      highPass.type = 'highpass'
+      highPass.frequency.value = AUDIO_CONFIG.HIGH_PASS_HZ
+      highPass.Q.value = 0.707
+
+      const lowPass = audioContext.createBiquadFilter()
+      lowPass.type = 'lowpass'
+      lowPass.frequency.value = AUDIO_CONFIG.LOW_PASS_HZ
+      lowPass.Q.value = 0.707
+
       const gain = audioContext.createGain()
-      gain.gain.value = INPUT_GAIN
+      gain.gain.value = AUDIO_CONFIG.INPUT_GAIN
+
       const analyser = audioContext.createAnalyser()
-      analyser.fftSize = FFT_SIZE
-      source.connect(gain)
+      analyser.fftSize = AUDIO_CONFIG.FFT_SIZE
+
+      source.connect(highPass)
+      highPass.connect(lowPass)
+      lowPass.connect(gain)
       gain.connect(analyser)
 
       const buffer = new Float32Array(analyser.fftSize)
@@ -76,10 +129,51 @@ export function usePitchDetection({
 
       const analyze = () => {
         analyser.getFloatTimeDomainData(buffer)
-        const result = detectPitch(buffer, sampleRate)
+        const rms = calculateRms(buffer)
+        const gateOpen = rms >= AUDIO_CONFIG.RMS_GATE_THRESHOLD
 
-        setFrequency(result.frequency)
-        setConfidence(result.confidence > 0 ? result.confidence : null)
+        let rawFrequency: number | null = null
+        let detectedString: GuitarStringLabel | null = null
+        let liveFrequency: number | null = null
+        let stableFrequency: number | null = null
+
+        if (gateOpen) {
+          const result = detectGuitarPitch(buffer, sampleRate)
+          if (
+            result.frequency !== null &&
+            result.stringLabel !== null &&
+            result.confidence >= AUDIO_CONFIG.MIN_PITCH_CONFIDENCE &&
+            isValidGuitarFrequency(result.frequency)
+          ) {
+            rawFrequency = result.frequency
+            detectedString = result.stringLabel
+            liveFrequency = result.frequency
+            stableFrequency = stabilityFilter.add(result.frequency)
+          } else {
+            stabilityFilter.clear()
+          }
+        } else {
+          stabilityFilter.clear()
+        }
+
+        const hold = displayHold.update(stableFrequency, performance.now())
+        const status = resolveStatus(
+          rms,
+          liveFrequency,
+          stableFrequency,
+          hold.isHolding,
+        )
+
+        setFrame({
+          rawFrequency,
+          detectedString,
+          liveFrequency,
+          stableFrequency,
+          heldFrequency: hold.frequency,
+          rms,
+          status,
+        })
+
         animationFrameId = requestAnimationFrame(analyze)
       }
 
@@ -91,26 +185,17 @@ export function usePitchDetection({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationFrameId)
+      stabilityFilter.clear()
+      displayHold.reset()
       setIsListening(false)
-      setFrequency(null)
-      setConfidence(null)
+      setFrame(EMPTY_FRAME)
       void audioContext?.close()
     }
   }, [isActive, stream])
 
-  const activeFrequency = isActive ? frequency : null
-  const activeConfidence = isActive ? confidence : null
-  const activeListening = isActive && isListening
-  const statusMessage = getStatusMessage(
-    activeListening,
-    activeFrequency,
-    activeConfidence,
-  )
-
-  return {
-    frequency: activeFrequency,
-    isListening: activeListening,
-    confidence: activeConfidence,
-    statusMessage,
+  if (!isActive) {
+    return { ...EMPTY_FRAME, isListening: false }
   }
+
+  return { ...frame, isListening }
 }

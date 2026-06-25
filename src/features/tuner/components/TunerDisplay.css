@@ -1,0 +1,148 @@
+.tuner-display {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 24rem;
+  gap: 1.25rem;
+  padding: 0 1rem;
+  box-sizing: border-box;
+}
+
+.tuner-readout {
+  width: 100%;
+  text-align: center;
+}
+
+.tuner-note {
+  margin: 0;
+  font-size: clamp(4.5rem, 18vw, 6rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+}
+
+.tuner-note--in-tune {
+  color: #4ade80;
+}
+
+.tuner-status {
+  margin: 0.5rem 0 1.25rem;
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.tuner-status--in-tune {
+  color: #4ade80;
+}
+
+.tuner-status--flat,
+.tuner-status--sharp {
+  color: #fbbf24;
+}
+
+.cents-meter {
+  width: 100%;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
+}
+
+.cents-meter__track {
+  position: relative;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: visible;
+}
+
+.cents-meter__center {
+  position: absolute;
+  left: 50%;
+  top: -0.35rem;
+  width: 2px;
+  height: 1.2rem;
+  margin-left: -1px;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 1px;
+}
+
+.cents-meter__indicator {
+  position: absolute;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  margin: -0.5rem 0 0 -0.5rem;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.35);
+  transition: left 80ms linear;
+}
+
+.cents-meter__labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.guitar-layout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.string-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1.25rem;
+  height: 13.5rem;
+  padding: 0.5rem 0;
+}
+
+.string-btn {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.string-btn--active {
+  background: #ffffff;
+  color: #111827;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.45);
+}
+
+.headstock-svg {
+  width: 7.5rem;
+  height: auto;
+  flex-shrink: 0;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+}
+
+.tuner-debug {
+  margin: 0;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.25);
+  font-variant-numeric: tabular-nums;
+}
