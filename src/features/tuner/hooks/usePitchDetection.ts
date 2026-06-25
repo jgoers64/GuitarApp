@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { GuitarStringLabel } from '../utils/noteUtils'
 import {
+  GUITAR_STRINGS,
+  getStringByLabel,
   isValidGuitarFrequency,
   resolveGuitarPitch,
+  type GuitarStringLabel,
 } from '../utils/noteUtils'
 import {
   AUDIO_CONFIG,
@@ -52,7 +54,11 @@ const EMPTY_FRAME: PitchFrame = {
 }
 
 const RESPONSIVE_WINDOW_SIZE = 3
-const STRING_CONFIRM_FRAMES = 2
+const INITIAL_STRING_CONFIRM_FRAMES = 3
+const ADJACENT_STRING_CONFIRM_FRAMES = 3
+const SKIPPED_STRING_CONFIRM_FRAMES = 8
+const HARMONIC_JUMP_CONFIRM_FRAMES = 10
+const HARMONIC_TOLERANCE_CENTS = 80
 const STRING_UNLOCK_SILENCE_MS = 180
 
 function resolveStatus(
@@ -74,6 +80,64 @@ function resolveStatus(
     return 'unstable'
   }
   return 'listening'
+}
+
+function centsBetween(frequency: number, targetFrequency: number): number {
+  return 1200 * Math.log2(frequency / targetFrequency)
+}
+
+function isLikelyHarmonicError(
+  frequency: number,
+  confirmedString: GuitarStringLabel,
+): boolean {
+  const targetFrequency = getStringByLabel(confirmedString).frequency
+
+  for (let harmonic = 2; harmonic <= 4; harmonic++) {
+    const upperHarmonicCents = Math.abs(
+      centsBetween(frequency, targetFrequency * harmonic),
+    )
+    const lowerSubharmonicCents = Math.abs(
+      centsBetween(frequency * harmonic, targetFrequency),
+    )
+
+    if (
+      upperHarmonicCents <= HARMONIC_TOLERANCE_CENTS ||
+      lowerSubharmonicCents <= HARMONIC_TOLERANCE_CENTS
+    ) {
+      return true
+    }
+  }
+
+  return false
+}
+
+function getRequiredConfirmationFrames(
+  confirmedString: GuitarStringLabel | null,
+  candidateString: GuitarStringLabel,
+  frequency: number,
+): number {
+  if (confirmedString === null) {
+    return INITIAL_STRING_CONFIRM_FRAMES
+  }
+
+  if (isLikelyHarmonicError(frequency, confirmedString)) {
+    return HARMONIC_JUMP_CONFIRM_FRAMES
+  }
+
+  const confirmedIndex = GUITAR_STRINGS.findIndex(
+    (guitarString) => guitarString.label === confirmedString,
+  )
+  const candidateIndex = GUITAR_STRINGS.findIndex(
+    (guitarString) => guitarString.label === candidateString,
+  )
+
+  if (confirmedIndex < 0 || candidateIndex < 0) {
+    return SKIPPED_STRING_CONFIRM_FRAMES
+  }
+
+  return Math.abs(candidateIndex - confirmedIndex) <= 1
+    ? ADJACENT_STRING_CONFIRM_FRAMES
+    : SKIPPED_STRING_CONFIRM_FRAMES
 }
 
 export function usePitchDetection({
@@ -124,7 +188,10 @@ export function usePitchDetection({
       return sorted[Math.floor((sorted.length - 1) / 2)] ?? frequency
     }
 
-    const updateConfirmedString = (label: GuitarStringLabel) => {
+    const updateConfirmedString = (
+      label: GuitarStringLabel,
+      frequency: number,
+    ) => {
       if (confirmedString === label) {
         pendingString = null
         pendingFrames = 0
@@ -138,7 +205,13 @@ export function usePitchDetection({
         pendingFrames = 1
       }
 
-      if (pendingFrames >= STRING_CONFIRM_FRAMES) {
+      const requiredFrames = getRequiredConfirmationFrames(
+        confirmedString,
+        label,
+        frequency,
+      )
+
+      if (pendingFrames >= requiredFrames) {
         confirmedString = label
         pendingString = null
         pendingFrames = 0
@@ -209,7 +282,7 @@ export function usePitchDetection({
             const responsiveString = resolveGuitarPitch(
               responsiveFrequency,
             ).label
-            updateConfirmedString(responsiveString)
+            updateConfirmedString(responsiveString, responsiveFrequency)
           } else {
             stabilityFilter.clear()
           }
