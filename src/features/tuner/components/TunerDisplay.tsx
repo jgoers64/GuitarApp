@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
 import {
   IN_TUNE_CENTS,
@@ -6,7 +7,6 @@ import {
   clampCents,
   formatTuneStatus,
   getTuningForString,
-  getTuneStatus,
   isValidGuitarFrequency,
   resolveGuitarPitch,
   type GuitarStringLabel,
@@ -14,6 +14,8 @@ import {
 } from '../utils/noteUtils'
 import { CentsMeter } from './CentsMeter'
 import { GuitarHeadstock } from './GuitarHeadstock'
+
+const IN_TUNE_EXIT_CENTS = 15
 
 interface TunerDisplayProps {
   responsiveFrequency: number | null
@@ -36,6 +38,9 @@ export function TunerDisplay({
   selectedString,
   onStringSelect,
 }: TunerDisplayProps) {
+  const [latchedInTuneString, setLatchedInTuneString] =
+    useState<GuitarStringLabel | null>(null)
+
   // The meter follows the fast-smoothed pitch while the target string uses
   // short confirmation, preventing a one-frame harmonic from changing notes.
   const responsiveAutoString =
@@ -89,17 +94,60 @@ export function TunerDisplay({
       : null
 
   const actualCentsOff = tuningResult?.centsOff ?? null
+  const latchAppliesToCurrentString =
+    targetString !== null && latchedInTuneString === targetString
+  const inTuneLimit = latchAppliesToCurrentString
+    ? IN_TUNE_EXIT_CENTS
+    : IN_TUNE_CENTS
+  const isInTune =
+    actualCentsOff !== null && Math.abs(actualCentsOff) <= inTuneLimit
+
+  useEffect(() => {
+    if (
+      !isMicActive ||
+      !hasValidPitch ||
+      targetString === null ||
+      actualCentsOff === null
+    ) {
+      setLatchedInTuneString(null)
+      return
+    }
+
+    const currentLimit =
+      latchedInTuneString === targetString
+        ? IN_TUNE_EXIT_CENTS
+        : IN_TUNE_CENTS
+
+    if (Math.abs(actualCentsOff) <= currentLimit) {
+      setLatchedInTuneString(targetString)
+    } else {
+      setLatchedInTuneString(null)
+    }
+  }, [
+    actualCentsOff,
+    hasValidPitch,
+    isMicActive,
+    latchedInTuneString,
+    targetString,
+  ])
+
   const displayCents =
     actualCentsOff === null
       ? null
-      : Math.abs(actualCentsOff) <= IN_TUNE_CENTS
+      : isInTune
         ? 0
         : actualToDisplayCents(actualCentsOff)
+
   const tuneStatus: TuneStatus = !isMicActive
     ? 'idle'
     : hasValidPitch && tuningResult !== null
-      ? getTuneStatus(actualCentsOff)
+      ? isInTune
+        ? 'in-tune'
+        : actualCentsOff !== null && actualCentsOff < 0
+          ? 'flat'
+          : 'sharp'
       : 'listening'
+
   const meterPosition =
     displayCents !== null
       ? centsToMeterPercent(clampCents(displayCents))
