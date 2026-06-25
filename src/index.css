@@ -158,9 +158,14 @@ body {
 }
 
 .tune-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.575rem;
   margin: 0;
   font-size: 1.125rem;
   font-weight: 500;
+  line-height: 1.4;
   letter-spacing: 0.02em;
   color: var(--tuner-muted);
 }
