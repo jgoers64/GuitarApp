@@ -15,7 +15,7 @@ import {
 import { CentsMeter } from './CentsMeter'
 import { GuitarHeadstock } from './GuitarHeadstock'
 
-const IN_TUNE_EXIT_CENTS = 15
+const IN_TUNE_EXIT_CENTS = 20
 
 interface TunerDisplayProps {
   responsiveFrequency: number | null
