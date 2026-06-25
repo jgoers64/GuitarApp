@@ -35,6 +35,8 @@ export function TunerDisplay({
   selectedString,
   onStringSelect,
 }: TunerDisplayProps) {
+  // The meter follows the fast-smoothed pitch while the target string uses
+  // short confirmation, preventing a one-frame harmonic from changing notes.
   const responsiveAutoString =
     responsiveFrequency !== null
       ? resolveGuitarPitch(responsiveFrequency).label
