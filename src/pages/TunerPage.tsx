@@ -15,7 +15,6 @@ export function TunerPage() {
   const { status, stream, error, start, stop } = useMicrophone()
   const {
     rawFrequency,
-    detectedString,
     heldFrequency,
     liveFrequency,
     status: detectionStatus,
@@ -61,7 +60,6 @@ export function TunerPage() {
 
         <TunerDisplay
           rawFrequency={rawFrequency}
-          detectedString={detectedString}
           heldFrequency={heldFrequency}
           liveFrequency={liveFrequency}
           detectionStatus={detectionStatus}
