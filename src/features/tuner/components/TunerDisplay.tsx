@@ -4,7 +4,6 @@ import {
   centsToMeterPercent,
   clampCents,
   formatTuneStatus,
-  getStringByLabel,
   getTuningForString,
   getTuneStatus,
   isValidGuitarFrequency,
@@ -17,7 +16,6 @@ import { GuitarHeadstock } from './GuitarHeadstock'
 
 interface TunerDisplayProps {
   rawFrequency: number | null
-  detectedString: GuitarStringLabel | null
   heldFrequency: number | null
   liveFrequency: number | null
   detectionStatus: TunerDetectionStatus
@@ -29,7 +27,6 @@ interface TunerDisplayProps {
 
 export function TunerDisplay({
   rawFrequency,
-  detectedString,
   heldFrequency,
   liveFrequency,
   detectionStatus,
@@ -39,32 +36,23 @@ export function TunerDisplay({
   onStringSelect,
 }: TunerDisplayProps) {
   const pitchFrequency = rawFrequency ?? heldFrequency ?? liveFrequency
-  const activeString = autoMode ? detectedString : selectedString
 
-  const hasManualDetection =
+  const hasDetection =
     isMicActive &&
     pitchFrequency !== null &&
     (detectionStatus === 'stable' || detectionStatus === 'holding')
-
-  const hasAutoDetection =
-    isMicActive &&
-    pitchFrequency !== null &&
-    activeString !== null &&
-    (detectionStatus === 'stable' || detectionStatus === 'holding')
-
-  const hasDetection = autoMode ? hasAutoDetection : hasManualDetection
 
   const hasValidPitch =
     hasDetection &&
     pitchFrequency !== null &&
     isValidGuitarFrequency(pitchFrequency)
 
+  const canResolvePitch = autoMode || selectedString !== null
   const resolvedPitch =
-    hasValidPitch && pitchFrequency !== null
-      ? resolveGuitarPitch(
-          pitchFrequency,
-          autoMode ? activeString : selectedString,
-        )
+    hasValidPitch && pitchFrequency !== null && canResolvePitch
+      ? autoMode
+        ? resolveGuitarPitch(pitchFrequency)
+        : resolveGuitarPitch(pitchFrequency, selectedString)
       : null
 
   const displayNote = autoMode
@@ -72,16 +60,8 @@ export function TunerDisplay({
     : (selectedString ?? '—')
 
   const tuningResult =
-    hasValidPitch &&
-    pitchFrequency !== null &&
-    resolvedPitch !== null &&
-    (autoMode ? activeString !== null : selectedString !== null)
-      ? getTuningForString(
-          pitchFrequency,
-          getStringByLabel(
-            autoMode ? activeString! : selectedString!,
-          ).frequency,
-        )
+    hasValidPitch && pitchFrequency !== null && resolvedPitch !== null
+      ? getTuningForString(pitchFrequency, resolvedPitch.targetFrequency)
       : null
 
   const actualCentsOff = tuningResult?.centsOff ?? null
