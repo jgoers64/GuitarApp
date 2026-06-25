@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
 import {
-  IN_TUNE_CENTS,
   actualToDisplayCents,
   centsToMeterPercent,
   clampCents,
@@ -12,10 +11,9 @@ import {
   type GuitarStringLabel,
   type TuneStatus,
 } from '../utils/noteUtils'
+import { updateInTuneHysteresis } from '../utils/tuningHysteresis'
 import { CentsMeter } from './CentsMeter'
 import { GuitarHeadstock } from './GuitarHeadstock'
-
-const IN_TUNE_EXIT_CENTS = 20
 
 interface TunerDisplayProps {
   responsiveFrequency: number | null
@@ -94,54 +92,30 @@ export function TunerDisplay({
       : null
 
   const actualCentsOff = tuningResult?.centsOff ?? null
-  const latchAppliesToCurrentString =
-    targetString !== null && latchedInTuneString === targetString
-  const inTuneLimit = latchAppliesToCurrentString
-    ? IN_TUNE_EXIT_CENTS
-    : IN_TUNE_CENTS
-  const isInTune =
-    actualCentsOff !== null && Math.abs(actualCentsOff) <= inTuneLimit
-
-  useEffect(() => {
-    if (
-      !isMicActive ||
-      !hasValidPitch ||
-      targetString === null ||
-      actualCentsOff === null
-    ) {
-      setLatchedInTuneString(null)
-      return
-    }
-
-    const currentLimit =
-      latchedInTuneString === targetString
-        ? IN_TUNE_EXIT_CENTS
-        : IN_TUNE_CENTS
-
-    if (Math.abs(actualCentsOff) <= currentLimit) {
-      setLatchedInTuneString(targetString)
-    } else {
-      setLatchedInTuneString(null)
-    }
-  }, [
-    actualCentsOff,
-    hasValidPitch,
-    isMicActive,
+  const hysteresis = updateInTuneHysteresis(
     latchedInTuneString,
     targetString,
-  ])
+    actualCentsOff,
+    hasValidPitch,
+  )
+
+  useEffect(() => {
+    if (latchedInTuneString !== hysteresis.latchedString) {
+      setLatchedInTuneString(hysteresis.latchedString)
+    }
+  }, [hysteresis.latchedString, latchedInTuneString])
 
   const displayCents =
     actualCentsOff === null
       ? null
-      : isInTune
+      : hysteresis.isInTune
         ? 0
         : actualToDisplayCents(actualCentsOff)
 
   const tuneStatus: TuneStatus = !isMicActive
     ? 'idle'
     : hasValidPitch && tuningResult !== null
-      ? isInTune
+      ? hysteresis.isInTune
         ? 'in-tune'
         : actualCentsOff !== null && actualCentsOff < 0
           ? 'flat'
