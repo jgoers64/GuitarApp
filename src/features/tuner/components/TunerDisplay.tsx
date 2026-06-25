@@ -15,9 +15,8 @@ import { CentsMeter } from './CentsMeter'
 import { GuitarHeadstock } from './GuitarHeadstock'
 
 interface TunerDisplayProps {
-  rawFrequency: number | null
+  stableFrequency: number | null
   heldFrequency: number | null
-  liveFrequency: number | null
   detectionStatus: TunerDetectionStatus
   isMicActive: boolean
   autoMode: boolean
@@ -26,16 +25,17 @@ interface TunerDisplayProps {
 }
 
 export function TunerDisplay({
-  rawFrequency,
+  stableFrequency,
   heldFrequency,
-  liveFrequency,
   detectionStatus,
   isMicActive,
   autoMode,
   selectedString,
   onStringSelect,
 }: TunerDisplayProps) {
-  const pitchFrequency = rawFrequency ?? heldFrequency ?? liveFrequency
+  // Never let a raw attack-frame harmonic control the UI. Use the stabilized
+  // pitch first, then keep the last stable pitch during the display hold.
+  const pitchFrequency = stableFrequency ?? heldFrequency
 
   const hasDetection =
     isMicActive &&
