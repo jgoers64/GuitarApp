@@ -10,8 +10,6 @@ export type GuitarStringLabel = (typeof GUITAR_STRINGS)[number]['label']
 export const MIN_GUITAR_DETECT_HZ = 60
 export const MAX_GUITAR_DETECT_HZ = 700
 
-const MAX_HARMONIC_DIVISOR = 4
-
 /** Actual cents within this range count as "In tune". */
 export const IN_TUNE_CENTS = 5
 export const CENTS_DISPLAY_SCALE = 10
@@ -67,17 +65,12 @@ export function resolveGuitarPitch(
   if (preferredLabel !== undefined && preferredLabel !== null) {
     const matchedString = getStringByLabel(preferredLabel)
     const tuning = getTuningForString(frequency, matchedString.frequency)
-    const match = matchGuitarString(frequency)
-    const fundamentalHz =
-      match !== null && match.label === preferredLabel
-        ? match.fundamentalHz
-        : frequency
 
     return {
       label: matchedString.label,
       note: matchedString.note,
       targetFrequency: matchedString.frequency,
-      fundamentalHz,
+      fundamentalHz: frequency,
       centsOff: tuning.centsOff,
     }
   }
@@ -136,25 +129,7 @@ export function getTuningForString(
   frequency: number,
   targetFrequency: number,
 ): TuningForStringResult {
-  let centsOff = centsDifference(frequency, targetFrequency)
-  let bestAbs = Math.abs(centsOff)
-
-  for (let divisor = 2; divisor <= MAX_HARMONIC_DIVISOR; divisor++) {
-    const candidateHz = frequency / divisor
-    if (
-      candidateHz < MIN_GUITAR_DETECT_HZ ||
-      candidateHz > MAX_GUITAR_DETECT_HZ
-    ) {
-      continue
-    }
-
-    const cents = centsDifference(candidateHz, targetFrequency)
-    const abs = Math.abs(cents)
-    if (abs < bestAbs) {
-      bestAbs = abs
-      centsOff = cents
-    }
-  }
+  const centsOff = centsDifference(frequency, targetFrequency)
 
   if (Math.abs(centsOff) <= IN_TUNE_CENTS) {
     return { centsOff, status: 'In tune' }
