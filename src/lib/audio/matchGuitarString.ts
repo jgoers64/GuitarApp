@@ -7,6 +7,8 @@ import { centsDifference } from '../music/frequency'
 const MIN_MATCH_HZ = 60
 const MAX_MATCH_HZ = 700
 
+type GuitarOpenString = (typeof GUITAR_OPEN_STRINGS)[number]
+
 export interface GuitarStringMatch {
   label: GuitarOpenStringLabel
   targetFrequency: number
@@ -35,7 +37,7 @@ export function matchGuitarString(
     return null
   }
 
-  let bestString = GUITAR_OPEN_STRINGS[0]
+  let bestString: GuitarOpenString = GUITAR_OPEN_STRINGS[0]
   let bestCents = centsDifference(frequency, bestString.frequency)
   let bestDistance = Math.abs(bestCents)
 
