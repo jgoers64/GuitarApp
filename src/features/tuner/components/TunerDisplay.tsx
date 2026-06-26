@@ -26,12 +26,7 @@ interface TunerDisplayProps {
   onStringSelect: (label: GuitarStringLabel) => void
 }
 
-interface ReliableReading {
-  stringLabel: GuitarStringLabel
-  frequency: number
-}
-
-const MAX_RELIABLE_AUTO_CENTS = 60
+const MAX_RELIABLE_AUTO_CENTS = 80
 
 export function TunerDisplay({
   responsiveFrequency,
@@ -45,8 +40,8 @@ export function TunerDisplay({
 }: TunerDisplayProps) {
   const [latchedInTuneString, setLatchedInTuneString] =
     useState<GuitarStringLabel | null>(null)
-  const [lastReliableReading, setLastReliableReading] =
-    useState<ReliableReading | null>(null)
+  const [lastReliableString, setLastReliableString] =
+    useState<GuitarStringLabel | null>(null)
 
   const responsiveAutoString =
     responsiveFrequency !== null
@@ -101,76 +96,56 @@ export function TunerDisplay({
         )
       : null
 
-  const autoReadingIsReliable =
+  const rawActualCents = rawTuningResult?.centsOff ?? null
+  const rawReadingIsReliable =
     autoMode &&
-    rawPitchFrequency !== null &&
     rawTargetString !== null &&
-    rawTuningResult !== null &&
-    Math.abs(rawTuningResult.centsOff) <= MAX_RELIABLE_AUTO_CENTS
+    rawActualCents !== null &&
+    Math.abs(rawActualCents) <= MAX_RELIABLE_AUTO_CENTS
 
   useEffect(() => {
     if (!autoMode || !isMicActive) {
-      if (lastReliableReading !== null) {
-        setLastReliableReading(null)
+      if (lastReliableString !== null) {
+        setLastReliableString(null)
       }
       return
     }
 
     if (
-      !autoReadingIsReliable ||
-      rawTargetString === null ||
-      rawPitchFrequency === null
+      rawReadingIsReliable &&
+      rawTargetString !== null &&
+      lastReliableString !== rawTargetString
     ) {
-      return
+      setLastReliableString(rawTargetString)
     }
-
-    if (
-      lastReliableReading?.stringLabel === rawTargetString &&
-      Math.abs(lastReliableReading.frequency - rawPitchFrequency) < 0.01
-    ) {
-      return
-    }
-
-    setLastReliableReading({
-      stringLabel: rawTargetString,
-      frequency: rawPitchFrequency,
-    })
   }, [
     autoMode,
-    autoReadingIsReliable,
     isMicActive,
-    lastReliableReading,
-    rawPitchFrequency,
+    lastReliableString,
+    rawReadingIsReliable,
     rawTargetString,
   ])
 
-  const useLastReliableReading =
-    autoMode && !autoReadingIsReliable && lastReliableReading !== null
+  const suspiciousExtremeSwitch =
+    autoMode &&
+    lastReliableString !== null &&
+    rawTargetString !== null &&
+    rawTargetString !== lastReliableString &&
+    rawActualCents !== null &&
+    Math.abs(rawActualCents) > MAX_RELIABLE_AUTO_CENTS
 
-  const pitchFrequency = autoMode
-    ? autoReadingIsReliable
-      ? rawPitchFrequency
-      : (lastReliableReading?.frequency ?? null)
-    : rawPitchFrequency
-
+  const useLiveReading = rawHasValidPitch && !suspiciousExtremeSwitch
+  const pitchFrequency = useLiveReading ? rawPitchFrequency : null
   const targetString = autoMode
-    ? autoReadingIsReliable
+    ? useLiveReading
       ? rawTargetString
-      : (lastReliableReading?.stringLabel ?? null)
+      : (lastReliableString ?? rawTargetString)
     : selectedString
 
-  const hasDetection =
-    isMicActive &&
+  const hasValidPitch =
+    useLiveReading &&
     pitchFrequency !== null &&
     targetString !== null &&
-    (useLastReliableReading ||
-      detectionStatus === 'unstable' ||
-      detectionStatus === 'stable' ||
-      detectionStatus === 'holding')
-
-  const hasValidPitch =
-    hasDetection &&
-    pitchFrequency !== null &&
     isValidGuitarFrequency(pitchFrequency)
 
   const resolvedPitch =
@@ -204,7 +179,7 @@ export function TunerDisplay({
         ? 0
         : actualToDisplayCents(actualCentsOff)
 
-  const tuneStatus: TuneStatus = !isMicActive
+  const tuneStatus: TuneStatus = !isMicActive || !useLiveReading
     ? 'idle'
     : hasValidPitch && tuningResult !== null
       ? hysteresis.isInTune
@@ -246,10 +221,11 @@ export function TunerDisplay({
             hasValidPitch && tuningResult !== null ? meterPosition : null
           }
           isInTune={hysteresis.isInTune}
+          hideIndicator={!useLiveReading}
         />
       </div>
 
-      {isMicActive && resolvedPitch !== null && !useLastReliableReading && (
+      {isMicActive && resolvedPitch !== null && useLiveReading && (
         <p className="tuner-debug">
           mic {pitchFrequency?.toFixed(1) ?? '—'} Hz → {resolvedPitch.note}{' '}
           (target {resolvedPitch.targetFrequency.toFixed(1)} Hz,{' '}
