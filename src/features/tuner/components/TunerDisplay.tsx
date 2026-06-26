@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import type { TunerDetectionStatus } from '../hooks/usePitchDetection'
 import {
+  formatTuningNote,
+  getTuningStringByLabel,
+  resolveTuningPitch,
+  type TuningStringTarget,
+} from '../tunings'
+import {
   actualToDisplayCents,
   centsToMeterPercent,
   clampCents,
   formatTuneStatus,
   getTuningForString,
   isValidGuitarFrequency,
-  resolveGuitarPitch,
   type GuitarStringLabel,
   type TuneStatus,
 } from '../utils/noteUtils'
@@ -23,6 +28,7 @@ interface TunerDisplayProps {
   isMicActive: boolean
   autoMode: boolean
   selectedString: GuitarStringLabel | null
+  tuningStrings: readonly TuningStringTarget[]
   onStringSelect: (label: GuitarStringLabel) => void
 }
 
@@ -36,6 +42,7 @@ export function TunerDisplay({
   isMicActive,
   autoMode,
   selectedString,
+  tuningStrings,
   onStringSelect,
 }: TunerDisplayProps) {
   const [latchedInTuneString, setLatchedInTuneString] =
@@ -45,10 +52,12 @@ export function TunerDisplay({
 
   const responsiveAutoString =
     responsiveFrequency !== null
-      ? resolveGuitarPitch(responsiveFrequency).label
+      ? resolveTuningPitch(responsiveFrequency, tuningStrings).label
       : null
   const heldAutoString =
-    heldFrequency !== null ? resolveGuitarPitch(heldFrequency).label : null
+    heldFrequency !== null
+      ? resolveTuningPitch(heldFrequency, tuningStrings).label
+      : null
 
   const autoFrequency =
     detectedString !== null &&
@@ -83,7 +92,11 @@ export function TunerDisplay({
     rawHasValidPitch &&
     rawPitchFrequency !== null &&
     rawTargetString !== null
-      ? resolveGuitarPitch(rawPitchFrequency, rawTargetString)
+      ? resolveTuningPitch(
+          rawPitchFrequency,
+          tuningStrings,
+          rawTargetString,
+        )
       : null
 
   const rawTuningResult =
@@ -150,7 +163,7 @@ export function TunerDisplay({
 
   const resolvedPitch =
     hasValidPitch && pitchFrequency !== null && targetString !== null
-      ? resolveGuitarPitch(pitchFrequency, targetString)
+      ? resolveTuningPitch(pitchFrequency, tuningStrings, targetString)
       : null
 
   const tuningResult =
@@ -194,16 +207,24 @@ export function TunerDisplay({
       ? centsToMeterPercent(clampCents(displayCents))
       : 50
 
+  const targetDisplayNote =
+    targetString === null
+      ? ''
+      : formatTuningNote(
+          getTuningStringByLabel(targetString, tuningStrings).note,
+        )
+
   return (
     <section className="tuner-display" aria-label="Guitar tuner">
       <div className="tuner-readout">
         <div className="tuner-headstock-layout">
           <p className="detected-note" aria-live="polite">
-            {targetString ?? ''}
+            {targetDisplayNote}
           </p>
 
           <GuitarHeadstock
             activeString={targetString}
+            tuningStrings={tuningStrings}
             onStringSelect={onStringSelect}
           />
         </div>
