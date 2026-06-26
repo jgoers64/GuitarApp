@@ -1,0 +1,324 @@
+.app-header {
+  left: calc(env(safe-area-inset-left, 0px) + 0.75rem);
+  right: calc(env(safe-area-inset-right, 0px) + 0.75rem);
+  width: auto;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.app-header__left,
+.app-header__right {
+  pointer-events: auto;
+}
+
+.app-header__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.375rem;
+}
+
+.tuning-selector {
+  position: relative;
+}
+
+.tuning-selector__trigger {
+  min-width: 8rem;
+  max-width: 12rem;
+  min-height: 3.15rem;
+  padding: 0.5rem 0.65rem 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.8rem;
+  background: rgba(28, 28, 30, 0.88);
+  color: var(--tuner-text);
+  box-shadow: 0 0.4rem 1.2rem rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tuning-selector__trigger-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.tuning-selector__trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.tuning-selector__trigger-notes {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+}
+
+.tuning-selector__chevron {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.75rem;
+}
+
+.tuning-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.58);
+  pointer-events: auto;
+}
+
+.tuning-sheet {
+  width: min(100%, 34rem);
+  max-height: 88svh;
+  overflow-y: auto;
+  padding: 0.45rem 1rem calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: none;
+  border-radius: 1.25rem 1.25rem 0 0;
+  background: #171719;
+  box-shadow: 0 -1rem 3rem rgba(0, 0, 0, 0.45);
+  color: var(--tuner-text);
+}
+
+.tuning-sheet__handle {
+  width: 2.5rem;
+  height: 0.28rem;
+  margin: 0.1rem auto 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.tuning-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.tuning-sheet__eyebrow {
+  margin: 0 0 0.12rem;
+  color: var(--tuner-green);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.tuning-sheet h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.tuning-sheet__close {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tuning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.tuning-option {
+  width: 100%;
+  min-height: 3.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--tuner-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tuning-option > span:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.tuning-option strong {
+  font-size: 0.95rem;
+}
+
+.tuning-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.72rem;
+  letter-spacing: 0.035em;
+}
+
+.tuning-option > span:last-child {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 1.05rem;
+}
+
+.tuning-option--active {
+  border-color: rgba(34, 197, 94, 0.55);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.tuning-option--active > span:last-child {
+  color: var(--tuner-green);
+}
+
+.custom-tuning-button {
+  width: 100%;
+  margin-top: 0.7rem;
+  min-height: 3rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 0.85rem;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.custom-tuning-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.custom-tuning-editor__name,
+.custom-tuning-editor__strings label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.custom-tuning-editor input,
+.custom-tuning-editor select {
+  width: 100%;
+  min-height: 2.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.65rem;
+  background: #252528;
+  color: var(--tuner-text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-transform: none;
+  outline: none;
+}
+
+.custom-tuning-editor input:focus,
+.custom-tuning-editor select:focus {
+  border-color: var(--tuner-green);
+}
+
+.custom-tuning-editor__strings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.custom-tuning-editor__preview {
+  margin: 0;
+  padding: 0.65rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.custom-tuning-editor__actions {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 0.65rem;
+}
+
+.custom-tuning-editor__actions button {
+  min-height: 2.9rem;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.custom-tuning-editor__cancel {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.custom-tuning-editor__save {
+  border: none;
+  background: var(--tuner-green);
+  color: #052e16;
+}
+
+@media (max-width: 360px) {
+  .tuning-selector__trigger {
+    min-width: 7rem;
+    max-width: 9.5rem;
+  }
+
+  .tuning-selector__trigger-notes {
+    font-size: 0.56rem;
+  }
+
+  .custom-tuning-editor__strings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

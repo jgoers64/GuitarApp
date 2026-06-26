@@ -1,6 +1,13 @@
 import './rapidNoteDiagnostic'
 import { AUDIO_CONFIG, detectGuitarPitch } from '../src/lib/audio'
 import { TunerPitchTracker } from '../src/features/tuner/core/TunerPitchTracker'
+import {
+  createCustomTuning,
+  getBuiltInTuning,
+  noteToFrequency,
+  resolveTuningPitch,
+  type TuningStringTarget,
+} from '../src/features/tuner/tunings'
 import { updateInTuneHysteresis } from '../src/features/tuner/utils/tuningHysteresis'
 import { GUITAR_OPEN_STRINGS } from '../src/lib/music/guitarStrings'
 import { centsDifference } from '../src/lib/music/frequency'
@@ -55,8 +62,12 @@ function tone(
 }
 
 class Simulation {
-  tracker = new TunerPitchTracker()
+  tracker: TunerPitchTracker
   now = 0
+
+  constructor(tuningStrings?: readonly TuningStringTarget[]) {
+    this.tracker = new TunerPitchTracker(tuningStrings)
+  }
 
   step(frequency: number | null, rms: number, confidence = 0.9) {
     const result = this.tracker.process({
@@ -135,6 +146,49 @@ test('clears a finished pluck after silence', () => {
   const result = simulation.run(16, null, 0, 0)
   assert(result.frequency === null, 'Pitch remained after silence')
   assert(result.detectedString === null, 'String remained after silence')
+})
+
+test('tracks the low string as D2 in Drop D', () => {
+  const dropD = getBuiltInTuning('drop-d')
+  assert(dropD !== null, 'Drop D preset is missing')
+
+  const lowD = dropD.strings[0]
+  near(lowD.frequency, 73.42, 0.02, 'Drop D low string frequency')
+
+  const resolved = resolveTuningPitch(lowD.frequency, dropD.strings)
+  assert(resolved.label === 'E', 'Drop D did not map to the physical low string')
+  assert(resolved.note === 'D2', `Drop D resolved to ${resolved.note}`)
+
+  const simulation = new Simulation(dropD.strings)
+  const result = simulation.run(10, lowD.frequency, 0.05)
+  assert(result.detectedString === 'E', 'Tracker did not confirm the Drop D low string')
+})
+
+test('tracks DADGAD second string as A3', () => {
+  const dadgad = getBuiltInTuning('dadgad')
+  assert(dadgad !== null, 'DADGAD preset is missing')
+
+  const secondString = dadgad.strings[4]
+  assert(secondString.note === 'A3', 'DADGAD second string is not A3')
+
+  const simulation = new Simulation(dadgad.strings)
+  const result = simulation.run(12, secondString.frequency, 0.05)
+  assert(result.detectedString === 'B', 'Tracker did not use the physical second string')
+})
+
+test('creates custom tuning frequencies from note names', () => {
+  const custom = createCustomTuning('Open C', [
+    'C2',
+    'G2',
+    'C3',
+    'G3',
+    'C4',
+    'E4',
+  ])
+
+  assert(custom.strings.length === 6, 'Custom tuning did not contain six strings')
+  near(custom.strings[0].frequency, noteToFrequency('C2'), 0.001, 'Custom low C frequency')
+  assert(custom.description === 'C G C G C E', 'Custom tuning summary is incorrect')
 })
 
 test('uses ±10 cents to enter and ±20 cents to leave in tune', () => {

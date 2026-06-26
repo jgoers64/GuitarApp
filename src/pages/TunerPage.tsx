@@ -3,6 +3,14 @@ import { AppHeader } from '../components/AppHeader'
 import { TunerDisplay } from '../features/tuner/components/TunerDisplay'
 import { useMicrophone } from '../features/tuner/hooks/useMicrophone'
 import { usePitchDetection } from '../features/tuner/hooks/usePitchDetection'
+import {
+  loadStoredCustomTuning,
+  loadStoredTuningId,
+  resolveStoredTuning,
+  saveStoredCustomTuning,
+  saveStoredTuningId,
+  type TuningPreset,
+} from '../features/tuner/tunings'
 import type { GuitarStringLabel } from '../features/tuner/utils/noteUtils'
 
 export function TunerPage() {
@@ -10,6 +18,14 @@ export function TunerPage() {
   const [selectedString, setSelectedString] = useState<GuitarStringLabel | null>(
     null,
   )
+  const [customTuning, setCustomTuning] = useState<TuningPreset | null>(() =>
+    loadStoredCustomTuning(),
+  )
+  const [activeTuningId, setActiveTuningId] = useState(() =>
+    loadStoredTuningId(),
+  )
+
+  const activeTuning = resolveStoredTuning(activeTuningId, customTuning)
 
   const { status, stream, error, start, stop } = useMicrophone()
   const {
@@ -20,6 +36,7 @@ export function TunerPage() {
   } = usePitchDetection({
     stream,
     enabled: status === 'active',
+    tuningStrings: activeTuning.strings,
   })
 
   const isActive = status === 'active'
@@ -89,9 +106,30 @@ export function TunerPage() {
     setAutoMode(false)
   }
 
+  function handleTuningSelect(tuning: TuningPreset) {
+    setActiveTuningId(tuning.id)
+    saveStoredTuningId(tuning.id)
+    setSelectedString(null)
+  }
+
+  function handleCustomTuningSave(tuning: TuningPreset) {
+    setCustomTuning(tuning)
+    setActiveTuningId(tuning.id)
+    saveStoredCustomTuning(tuning)
+    saveStoredTuningId(tuning.id)
+    setSelectedString(null)
+  }
+
   return (
     <>
-      <AppHeader autoMode={autoMode} onAutoModeChange={handleAutoModeChange} />
+      <AppHeader
+        autoMode={autoMode}
+        activeTuning={activeTuning}
+        customTuning={customTuning}
+        onAutoModeChange={handleAutoModeChange}
+        onTuningSelect={handleTuningSelect}
+        onCustomTuningSave={handleCustomTuningSave}
+      />
 
       <main className="tuner-page">
         {error !== null && (
@@ -108,6 +146,7 @@ export function TunerPage() {
           isMicActive={isActive}
           autoMode={autoMode}
           selectedString={selectedString}
+          tuningStrings={activeTuning.strings}
           onStringSelect={handleStringSelect}
         />
 

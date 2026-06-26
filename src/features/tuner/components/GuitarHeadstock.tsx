@@ -1,10 +1,16 @@
 import headstockImage from '../../../assets/headstock.png'
-import { playStringReference } from '../../../lib/audio'
+import { playReferenceTone } from '../../../lib/audio'
+import {
+  formatTuningNote,
+  getTuningStringByLabel,
+  type TuningStringTarget,
+} from '../tunings'
 import type { GuitarStringLabel } from '../utils/noteUtils'
 import { HEADSTOCK_PEGS } from './headstockPegs'
 
 interface GuitarHeadstockProps {
   activeString: GuitarStringLabel | null
+  tuningStrings: readonly TuningStringTarget[]
   onStringSelect: (label: GuitarStringLabel) => void
 }
 
@@ -15,13 +21,18 @@ function PegButton({
   label,
   top,
   activeString,
+  tuningStrings,
   onStringSelect,
 }: {
   label: GuitarStringLabel
   top: string
   activeString: GuitarStringLabel | null
+  tuningStrings: readonly TuningStringTarget[]
   onStringSelect: (label: GuitarStringLabel) => void
 }) {
+  const target = getTuningStringByLabel(label, tuningStrings)
+  const displayNote = formatTuningNote(target.note)
+
   return (
     <button
       type="button"
@@ -30,19 +41,20 @@ function PegButton({
       }`}
       style={{ top }}
       onClick={() => {
-        void playStringReference(label)
+        void playReferenceTone(target.frequency)
         onStringSelect(label)
       }}
       aria-pressed={activeString === label}
-      aria-label={`${label === 'E' ? 'Low E' : label === 'e' ? 'High e' : label} string`}
+      aria-label={`String tuned to ${target.note}`}
     >
-      {label}
+      {displayNote}
     </button>
   )
 }
 
 export function GuitarHeadstock({
   activeString,
+  tuningStrings,
   onStringSelect,
 }: GuitarHeadstockProps) {
   return (
@@ -54,6 +66,7 @@ export function GuitarHeadstock({
             label={label}
             top={top}
             activeString={activeString}
+            tuningStrings={tuningStrings}
             onStringSelect={onStringSelect}
           />
         ))}
@@ -74,6 +87,7 @@ export function GuitarHeadstock({
             label={label}
             top={top}
             activeString={activeString}
+            tuningStrings={tuningStrings}
             onStringSelect={onStringSelect}
           />
         ))}

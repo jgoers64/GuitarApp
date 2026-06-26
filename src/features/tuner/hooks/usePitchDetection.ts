@@ -8,6 +8,7 @@ import {
   calculateRms,
   detectGuitarPitch,
 } from '../../../lib/audio'
+import type { TuningStringTarget } from '../tunings'
 import type { GuitarStringLabel } from '../utils/noteUtils'
 
 export type { TunerDetectionStatus } from '../core/TunerPitchTracker'
@@ -15,6 +16,7 @@ export type { TunerDetectionStatus } from '../core/TunerPitchTracker'
 interface UsePitchDetectionOptions {
   stream: MediaStream | null
   enabled: boolean
+  tuningStrings: readonly TuningStringTarget[]
 }
 
 interface PitchFrame {
@@ -46,6 +48,7 @@ const EMPTY_FRAME: PitchFrame = {
 export function usePitchDetection({
   stream,
   enabled,
+  tuningStrings,
 }: UsePitchDetectionOptions): UsePitchDetectionResult {
   const [frame, setFrame] = useState<PitchFrame>(EMPTY_FRAME)
   const [isListening, setIsListening] = useState(false)
@@ -60,7 +63,7 @@ export function usePitchDetection({
     let animationFrameId = 0
     let audioContext: AudioContext | null = null
     let cancelled = false
-    const tracker = new TunerPitchTracker()
+    const tracker = new TunerPitchTracker(tuningStrings)
 
     const startDetection = async () => {
       audioContext = new AudioContext()
@@ -104,7 +107,6 @@ export function usePitchDetection({
         const result = gateOpen
           ? detectGuitarPitch(buffer, sampleRate)
           : { frequency: null, confidence: 0, stringLabel: null }
-
         const snapshot = tracker.process({
           now: performance.now(),
           rms,
@@ -139,7 +141,7 @@ export function usePitchDetection({
       setFrame(EMPTY_FRAME)
       void audioContext?.close()
     }
-  }, [isActive, stream])
+  }, [isActive, stream, tuningStrings])
 
   if (!isActive) {
     return { ...EMPTY_FRAME, isListening: false }
