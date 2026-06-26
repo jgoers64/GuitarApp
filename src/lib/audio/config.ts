@@ -6,8 +6,8 @@ export const AUDIO_CONFIG = {
   FFT_SIZE: 4096,
   HIGH_PASS_HZ: 20,
   LOW_PASS_HZ: 1200,
-  /** Only run pitch detection when RMS exceeds this value */
-  RMS_GATE_THRESHOLD: 0.0035,
+  /** Keep quieter sustained strings, especially G3, above the detection gate. */
+  RMS_GATE_THRESHOLD: 0.002,
   /** Allow a substantially flat low E string to remain detectable. */
   MIN_FREQUENCY_HZ: 45,
   MAX_FREQUENCY_HZ: 1000,
