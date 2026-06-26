@@ -174,10 +174,13 @@ export class TunerPitchTracker {
   private pendingStringFrames = 0
   private isFrozen = false
   private readonly responsiveReadings: number[] = []
+  private readonly tuningStrings: readonly TuningStringTarget[]
 
   constructor(
-    private readonly tuningStrings: readonly TuningStringTarget[] = GUITAR_STRINGS,
-  ) {}
+    tuningStrings: readonly TuningStringTarget[] = GUITAR_STRINGS,
+  ) {
+    this.tuningStrings = tuningStrings
+  }
 
   reset(): void {
     this.pluckStartedAt = null
