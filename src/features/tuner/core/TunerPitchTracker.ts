@@ -32,8 +32,10 @@ export interface PitchTrackerSnapshot {
 const RESPONSIVE_WINDOW_SIZE = 3
 const ATTACK_IGNORE_MS = 60
 const INITIAL_STRING_CONFIRM_FRAMES = 3
+const INITIAL_HIGH_STRING_CONFIRM_FRAMES = 6
 const FRESH_ONSET_ADJACENT_CONFIRM_FRAMES = 2
 const FRESH_ONSET_JUMP_CONFIRM_FRAMES = 3
+const FRESH_ONSET_UPWARD_JUMP_CONFIRM_FRAMES = 6
 const FRESH_ONSET_SWITCH_WINDOW_MS = 220
 const ADJACENT_STRING_CONFIRM_FRAMES = 3
 const SKIPPED_STRING_CONFIRM_FRAMES = 7
@@ -91,22 +93,22 @@ function isLikelyHarmonicError(
   return false
 }
 
-function stringDistance(
+function stringIndex(label: GuitarStringLabel): number {
+  return GUITAR_STRINGS.findIndex((guitarString) => guitarString.label === label)
+}
+
+function stringOffset(
   current: GuitarStringLabel,
   candidate: GuitarStringLabel,
 ): number | null {
-  const currentIndex = GUITAR_STRINGS.findIndex(
-    (guitarString) => guitarString.label === current,
-  )
-  const candidateIndex = GUITAR_STRINGS.findIndex(
-    (guitarString) => guitarString.label === candidate,
-  )
+  const currentIndex = stringIndex(current)
+  const candidateIndex = stringIndex(candidate)
 
   if (currentIndex < 0 || candidateIndex < 0) {
     return null
   }
 
-  return Math.abs(currentIndex - candidateIndex)
+  return candidateIndex - currentIndex
 }
 
 function requiredStringFrames(
@@ -116,12 +118,23 @@ function requiredStringFrames(
   isFreshOnset: boolean,
 ): number {
   if (current === null) {
-    return INITIAL_STRING_CONFIRM_FRAMES
+    const candidateIndex = stringIndex(candidate)
+    return candidateIndex >= 3
+      ? INITIAL_HIGH_STRING_CONFIRM_FRAMES
+      : INITIAL_STRING_CONFIRM_FRAMES
   }
 
-  const distance = stringDistance(current, candidate)
+  const offset = stringOffset(current, candidate)
+  const distance = offset === null ? null : Math.abs(offset)
 
   if (isFreshOnset) {
+    // Low notes often produce a strong second harmonic during the pick attack.
+    // Require extra evidence before allowing a large upward string jump, while
+    // keeping nearby and downward transitions responsive.
+    if (offset !== null && offset >= 2) {
+      return FRESH_ONSET_UPWARD_JUMP_CONFIRM_FRAMES
+    }
+
     return distance !== null && distance <= 1
       ? FRESH_ONSET_ADJACENT_CONFIRM_FRAMES
       : FRESH_ONSET_JUMP_CONFIRM_FRAMES
@@ -242,8 +255,6 @@ export class TunerPitchTracker {
   }
 
   private startNewPluck(now: number): void {
-    // Preserve the previous reliable note during the short pick attack so the
-    // UI never flashes blank between rapid plucks.
     this.pluckStartedAt = now
     this.fastSwitchUntil = now + FRESH_ONSET_SWITCH_WINDOW_MS
     this.quietStartedAt = null
