@@ -1,11 +1,14 @@
 import { AUDIO_CONFIG } from '../../../lib/audio'
 import {
   GUITAR_STRINGS,
-  getStringByLabel,
   isValidGuitarFrequency,
-  resolveGuitarPitch,
   type GuitarStringLabel,
 } from '../utils/noteUtils'
+import {
+  getTuningStringByLabel,
+  resolveTuningPitch,
+  type TuningStringTarget,
+} from '../tunings'
 
 export type TunerDetectionStatus =
   | 'idle'
@@ -71,8 +74,12 @@ function centsBetween(frequency: number, targetFrequency: number): number {
 function isLikelyHarmonicError(
   frequency: number,
   confirmedString: GuitarStringLabel,
+  tuningStrings: readonly TuningStringTarget[],
 ): boolean {
-  const targetFrequency = getStringByLabel(confirmedString).frequency
+  const targetFrequency = getTuningStringByLabel(
+    confirmedString,
+    tuningStrings,
+  ).frequency
 
   for (let harmonic = 2; harmonic <= 4; harmonic++) {
     const upperHarmonicCents = Math.abs(
@@ -116,6 +123,7 @@ function requiredStringFrames(
   candidate: GuitarStringLabel,
   frequency: number,
   isFreshOnset: boolean,
+  tuningStrings: readonly TuningStringTarget[],
 ): number {
   if (current === null) {
     const candidateIndex = stringIndex(candidate)
@@ -140,7 +148,7 @@ function requiredStringFrames(
       : FRESH_ONSET_JUMP_CONFIRM_FRAMES
   }
 
-  if (isLikelyHarmonicError(frequency, current)) {
+  if (isLikelyHarmonicError(frequency, current, tuningStrings)) {
     return HARMONIC_JUMP_CONFIRM_FRAMES
   }
 
@@ -166,6 +174,10 @@ export class TunerPitchTracker {
   private pendingStringFrames = 0
   private isFrozen = false
   private readonly responsiveReadings: number[] = []
+
+  constructor(
+    private readonly tuningStrings: readonly TuningStringTarget[] = GUITAR_STRINGS,
+  ) {}
 
   reset(): void {
     this.pluckStartedAt = null
@@ -225,7 +237,10 @@ export class TunerPitchTracker {
           this.unreliableStartedAt = null
           this.isFrozen = false
           const smoothedFrequency = this.addResponsiveReading(frequency)
-          const candidateString = resolveGuitarPitch(smoothedFrequency).label
+          const candidateString = resolveTuningPitch(
+            smoothedFrequency,
+            this.tuningStrings,
+          ).label
           const acceptedString = this.updateConfirmedString(
             candidateString,
             smoothedFrequency,
@@ -299,6 +314,7 @@ export class TunerPitchTracker {
       candidate,
       frequency,
       isFreshOnset,
+      this.tuningStrings,
     )
 
     if (this.pendingStringFrames >= requiredFrames) {
