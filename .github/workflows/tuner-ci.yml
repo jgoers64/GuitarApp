@@ -2,6 +2,9 @@ name: Tuner CI
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature-chord-note-display
 
 jobs:
   test:
