@@ -1,30 +1,26 @@
 import { useEffect, useState } from 'react'
-import type { GuitarStringLabel } from '../utils/noteUtils'
-import { isValidGuitarFrequency } from '../utils/noteUtils'
+import {
+  TunerPitchTracker,
+  type TunerDetectionStatus,
+} from '../core/TunerPitchTracker'
 import {
   AUDIO_CONFIG,
   calculateRms,
   detectGuitarPitch,
-  DisplayHold,
-  PitchStabilityFilter,
 } from '../../../lib/audio'
+import type { GuitarStringLabel } from '../utils/noteUtils'
+
+export type { TunerDetectionStatus } from '../core/TunerPitchTracker'
 
 interface UsePitchDetectionOptions {
   stream: MediaStream | null
   enabled: boolean
 }
 
-export type TunerDetectionStatus =
-  | 'idle'
-  | 'listening'
-  | 'too-quiet'
-  | 'unstable'
-  | 'stable'
-  | 'holding'
-
 interface PitchFrame {
   rawFrequency: number | null
   detectedString: GuitarStringLabel | null
+  responsiveFrequency: number | null
   liveFrequency: number | null
   stableFrequency: number | null
   heldFrequency: number | null
@@ -39,32 +35,12 @@ interface UsePitchDetectionResult extends PitchFrame {
 const EMPTY_FRAME: PitchFrame = {
   rawFrequency: null,
   detectedString: null,
+  responsiveFrequency: null,
   liveFrequency: null,
   stableFrequency: null,
   heldFrequency: null,
   rms: 0,
   status: 'idle',
-}
-
-function resolveStatus(
-  rms: number,
-  liveFrequency: number | null,
-  stableFrequency: number | null,
-  isHolding: boolean,
-): TunerDetectionStatus {
-  if (isHolding) {
-    return 'holding'
-  }
-  if (rms < AUDIO_CONFIG.RMS_GATE_THRESHOLD) {
-    return 'too-quiet'
-  }
-  if (stableFrequency !== null) {
-    return 'stable'
-  }
-  if (liveFrequency !== null) {
-    return 'unstable'
-  }
-  return 'listening'
 }
 
 export function usePitchDetection({
@@ -84,13 +60,7 @@ export function usePitchDetection({
     let animationFrameId = 0
     let audioContext: AudioContext | null = null
     let cancelled = false
-
-    const stabilityFilter = new PitchStabilityFilter(
-      AUDIO_CONFIG.STABILITY_WINDOW_SIZE,
-      AUDIO_CONFIG.STABILITY_MIN_COUNT,
-      AUDIO_CONFIG.STABILITY_MAX_CENTS,
-    )
-    const displayHold = new DisplayHold(AUDIO_CONFIG.HOLD_DURATION_MS)
+    const tracker = new TunerPitchTracker()
 
     const startDetection = async () => {
       audioContext = new AudioContext()
@@ -131,47 +101,26 @@ export function usePitchDetection({
         analyser.getFloatTimeDomainData(buffer)
         const rms = calculateRms(buffer)
         const gateOpen = rms >= AUDIO_CONFIG.RMS_GATE_THRESHOLD
+        const result = gateOpen
+          ? detectGuitarPitch(buffer, sampleRate)
+          : { frequency: null, confidence: 0, stringLabel: null }
 
-        let rawFrequency: number | null = null
-        let detectedString: GuitarStringLabel | null = null
-        let liveFrequency: number | null = null
-        let stableFrequency: number | null = null
-
-        if (gateOpen) {
-          const result = detectGuitarPitch(buffer, sampleRate)
-          if (
-            result.frequency !== null &&
-            result.stringLabel !== null &&
-            result.confidence >= AUDIO_CONFIG.MIN_PITCH_CONFIDENCE &&
-            isValidGuitarFrequency(result.frequency)
-          ) {
-            rawFrequency = result.frequency
-            detectedString = result.stringLabel
-            liveFrequency = result.frequency
-            stableFrequency = stabilityFilter.add(result.frequency)
-          } else {
-            stabilityFilter.clear()
-          }
-        } else {
-          stabilityFilter.clear()
-        }
-
-        const hold = displayHold.update(stableFrequency, performance.now())
-        const status = resolveStatus(
+        const snapshot = tracker.process({
+          now: performance.now(),
           rms,
-          liveFrequency,
-          stableFrequency,
-          hold.isHolding,
-        )
+          frequency: result.frequency,
+          confidence: result.confidence,
+        })
 
         setFrame({
-          rawFrequency,
-          detectedString,
-          liveFrequency,
-          stableFrequency,
-          heldFrequency: hold.frequency,
+          rawFrequency: result.frequency,
+          detectedString: snapshot.detectedString,
+          responsiveFrequency: snapshot.frequency,
+          liveFrequency: result.frequency,
+          stableFrequency: snapshot.frequency,
+          heldFrequency: snapshot.frequency,
           rms,
-          status,
+          status: snapshot.status,
         })
 
         animationFrameId = requestAnimationFrame(analyze)
@@ -185,8 +134,7 @@ export function usePitchDetection({
     return () => {
       cancelled = true
       cancelAnimationFrame(animationFrameId)
-      stabilityFilter.clear()
-      displayHold.reset()
+      tracker.reset()
       setIsListening(false)
       setFrame(EMPTY_FRAME)
       void audioContext?.close()

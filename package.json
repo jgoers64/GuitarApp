@@ -1,10 +1,11 @@
 {
   "name": "guitar_app",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.3.18",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node scripts/run-tuner-tests.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",

@@ -1,10 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppHeader } from '../components/AppHeader'
 import { TunerDisplay } from '../features/tuner/components/TunerDisplay'
 import { useMicrophone } from '../features/tuner/hooks/useMicrophone'
 import { usePitchDetection } from '../features/tuner/hooks/usePitchDetection'
 import type { GuitarStringLabel } from '../features/tuner/utils/noteUtils'
-import { ensureAudioRunning } from '../lib/audio'
 
 export function TunerPage() {
   const [autoMode, setAutoMode] = useState(true)
@@ -12,12 +11,11 @@ export function TunerPage() {
     null,
   )
 
-  const { status, stream, error, start, stop } = useMicrophone()
+  const { status, stream, error, start } = useMicrophone()
   const {
-    rawFrequency,
+    responsiveFrequency,
     detectedString,
     heldFrequency,
-    liveFrequency,
     status: detectionStatus,
   } = usePitchDetection({
     stream,
@@ -25,7 +23,10 @@ export function TunerPage() {
   })
 
   const isActive = status === 'active'
-  const isRequesting = status === 'requesting'
+
+  useEffect(() => {
+    void start()
+  }, [start])
 
   function handleAutoModeChange(enabled: boolean) {
     setAutoMode(enabled)
@@ -37,15 +38,6 @@ export function TunerPage() {
   function handleStringSelect(label: GuitarStringLabel) {
     setSelectedString(label)
     setAutoMode(false)
-  }
-
-  function handleToggle() {
-    if (isActive) {
-      stop()
-    } else {
-      void ensureAudioRunning()
-      void start()
-    }
   }
 
   return (
@@ -60,25 +52,15 @@ export function TunerPage() {
         )}
 
         <TunerDisplay
-          rawFrequency={rawFrequency}
+          responsiveFrequency={responsiveFrequency}
           detectedString={detectedString}
           heldFrequency={heldFrequency}
-          liveFrequency={liveFrequency}
           detectionStatus={detectionStatus}
           isMicActive={isActive}
           autoMode={autoMode}
           selectedString={selectedString}
           onStringSelect={handleStringSelect}
         />
-
-        <button
-          type="button"
-          className="mic-toggle"
-          onClick={handleToggle}
-          disabled={isRequesting}
-        >
-          {isRequesting ? 'Starting…' : isActive ? 'Stop' : 'Start Tuner'}
-        </button>
       </main>
     </>
   )
