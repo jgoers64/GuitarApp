@@ -1,3 +1,5 @@
+import type { GuitarOpenStringLabel } from '../music/guitarStrings'
+
 export type ChromaticNoteName =
   | 'C'
   | 'C♯'
@@ -15,12 +17,14 @@ export type ChromaticNoteName =
 export interface ChordNoteResult {
   note: ChromaticNoteName | null
   frequency: number | null
+  targetString: GuitarOpenStringLabel | null
   confidence: number
   strongNoteCount: number
   isChordLike: boolean
 }
 
 interface CandidateScore {
+  midi: number
   note: ChromaticNoteName
   frequency: number
   score: number
@@ -42,9 +46,21 @@ const NOTE_NAMES: readonly ChromaticNoteName[] = [
   'B',
 ]
 
+const TUNER_TARGETS: ReadonlyArray<{
+  label: Exclude<GuitarOpenStringLabel, 'e'>
+  pitchClass: number
+}> = [
+  { label: 'E', pitchClass: 4 },
+  { label: 'A', pitchClass: 9 },
+  { label: 'D', pitchClass: 2 },
+  { label: 'G', pitchClass: 7 },
+  { label: 'B', pitchClass: 11 },
+]
+
 const MIN_MIDI = 40
 const MAX_MIDI = 83
 const MAX_ANALYSIS_HZ = 1200
+const HIGH_E_SPLIT_HZ = Math.sqrt(82.41 * 329.63)
 const HARMONIC_WEIGHTS = [1, 0.55, 0.32, 0.2, 0.12] as const
 const SUBHARMONIC_PENALTY = 0.8
 const STRONG_NOTE_RATIO = 0.3
@@ -57,6 +73,59 @@ function midiToFrequency(midi: number): number {
 
 function noteForMidi(midi: number): ChromaticNoteName {
   return NOTE_NAMES[((midi % 12) + 12) % 12]
+}
+
+function circularPitchDistance(first: number, second: number): number {
+  const direct = Math.abs(first - second)
+  return Math.min(direct, 12 - direct)
+}
+
+function targetForCandidate(candidate: CandidateScore): GuitarOpenStringLabel {
+  if (candidate.note === 'E') {
+    return candidate.frequency >= HIGH_E_SPLIT_HZ ? 'e' : 'E'
+  }
+
+  if (
+    candidate.note === 'A' ||
+    candidate.note === 'D' ||
+    candidate.note === 'G' ||
+    candidate.note === 'B'
+  ) {
+    return candidate.note
+  }
+
+  const pitchClass = ((candidate.midi % 12) + 12) % 12
+  let closest = TUNER_TARGETS[0]
+  let closestDistance = circularPitchDistance(
+    pitchClass,
+    closest.pitchClass,
+  )
+
+  for (const target of TUNER_TARGETS.slice(1)) {
+    const distance = circularPitchDistance(pitchClass, target.pitchClass)
+    if (distance < closestDistance) {
+      closest = target
+      closestDistance = distance
+    }
+  }
+
+  return closest.label
+}
+
+function chooseTargetString(
+  strongNotes: CandidateScore[],
+  strongest: CandidateScore,
+): GuitarOpenStringLabel {
+  const exactTargetNotes = strongNotes.filter(
+    (candidate) =>
+      candidate.note === 'E' ||
+      candidate.note === 'A' ||
+      candidate.note === 'D' ||
+      candidate.note === 'G' ||
+      candidate.note === 'B',
+  )
+
+  return targetForCandidate(exactTargetNotes[0] ?? strongest)
 }
 
 function dbToPower(db: number): number {
@@ -165,6 +234,7 @@ export function detectChordNote(
     )
 
     candidates.push({
+      midi,
       note: noteForMidi(midi),
       frequency,
       score,
@@ -196,6 +266,7 @@ export function detectChordNote(
     return {
       note: null,
       frequency: null,
+      targetString: null,
       confidence: 0,
       strongNoteCount: 0,
       isChordLike: false,
@@ -223,6 +294,7 @@ export function detectChordNote(
   return {
     note: strongest.note,
     frequency: strongest.frequency,
+    targetString: chooseTargetString(strongNotes, strongest),
     confidence: Math.min(1, strongest.score / Math.max(floor * 12, 1e-12)),
     strongNoteCount: strongNotes.length,
     isChordLike,
