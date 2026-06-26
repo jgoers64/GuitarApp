@@ -2,9 +2,9 @@ name: Tuner CI
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
-      - feature-chord-note-display
+      - fix/tuner-string-matching
 
 jobs:
   test:
