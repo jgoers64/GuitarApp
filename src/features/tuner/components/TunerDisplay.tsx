@@ -26,7 +26,7 @@ interface TunerDisplayProps {
   onStringSelect: (label: GuitarStringLabel) => void
 }
 
-const MAX_RELIABLE_AUTO_CENTS = 80
+const MAX_RELIABLE_AUTO_CENTS = 250
 
 export function TunerDisplay({
   responsiveFrequency,
