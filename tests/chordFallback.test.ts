@@ -2,7 +2,7 @@ import { ChordNoteTracker } from '../src/features/tuner/core/ChordNoteTracker'
 import { detectChordNote } from '../src/lib/audio/detectChordNote'
 
 const SAMPLE_RATE = 48_000
-const FFT_SIZE = 4096
+const FFT_SIZE = 16_384
 const BIN_COUNT = FFT_SIZE / 2
 
 function assert(value: unknown, message: string): asserts value {
@@ -17,13 +17,17 @@ function setPeak(
   levelDb: number,
 ): void {
   const exactBin = (frequency * FFT_SIZE) / SAMPLE_RATE
-  const center = Math.round(exactBin)
+  const center = Math.floor(exactBin)
 
-  for (let offset = -1; offset <= 1; offset++) {
+  for (let offset = -4; offset <= 4; offset++) {
     const index = center + offset
-    if (index >= 0 && index < spectrum.length) {
-      spectrum[index] = Math.max(spectrum[index], levelDb - Math.abs(offset) * 2)
+    if (index < 0 || index >= spectrum.length) {
+      continue
     }
+
+    const distance = index - exactBin
+    const binLevel = levelDb - distance * distance * 3
+    spectrum[index] = Math.max(spectrum[index], binLevel)
   }
 }
 
@@ -62,7 +66,10 @@ function runChordFallbackTests(): void {
     SAMPLE_RATE,
     FFT_SIZE,
   )
-  assert(!singleA.isChordLike, 'A single A note was incorrectly classified as a chord')
+  assert(
+    !singleA.isChordLike,
+    'A single A note was incorrectly classified as a chord',
+  )
 
   const cMajor = detectChordNote(
     spectrumForNotes([
@@ -105,7 +112,10 @@ function runChordFallbackTests(): void {
   assert(snapshot.targetString === 'E', 'Chord fallback did not retain E target')
 
   snapshot = tracker.process('G', true)
-  assert(snapshot.targetString === 'E', 'Chord target changed after one conflicting scan')
+  assert(
+    snapshot.targetString === 'E',
+    'Chord target changed after one conflicting scan',
+  )
   snapshot = tracker.process('G', true)
   assert(snapshot.targetString === 'G', 'Chord target did not switch after confirmation')
 
