@@ -7,10 +7,11 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? '/GuitarApp/' : '/',
   plugins: [react()],
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
-})
+}))
