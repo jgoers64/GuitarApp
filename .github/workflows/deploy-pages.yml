@@ -2,7 +2,7 @@ name: Deploy Guitar App to GitHub Pages
 
 on:
   push:
-    branches: ['main']
+    branches: ['main', 'setup-pwa-pages']
   pull_request:
     branches: ['main']
   workflow_dispatch:
@@ -37,17 +37,17 @@ jobs:
         run: npm run build
 
       - name: Configure GitHub Pages
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
         with:
           path: ./dist
 
   deploy:
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:
