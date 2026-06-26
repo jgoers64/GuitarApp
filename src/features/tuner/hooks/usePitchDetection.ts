@@ -9,9 +9,12 @@ import {
   calculateRms,
   detectChordNote,
   detectGuitarPitch,
-  type ChromaticNoteName,
 } from '../../../lib/audio'
-import type { GuitarStringLabel } from '../utils/noteUtils'
+import {
+  getStringByLabel,
+  getTuningForString,
+  type GuitarStringLabel,
+} from '../utils/noteUtils'
 
 export type { TunerDetectionStatus } from '../core/TunerPitchTracker'
 
@@ -27,8 +30,8 @@ interface PitchFrame {
   liveFrequency: number | null
   stableFrequency: number | null
   heldFrequency: number | null
-  chordNote: ChromaticNoteName | null
-  isChord: boolean
+  chordTargetString: GuitarStringLabel | null
+  isChordFallback: boolean
   rms: number
   status: TunerDetectionStatus
 }
@@ -44,13 +47,14 @@ const EMPTY_FRAME: PitchFrame = {
   liveFrequency: null,
   stableFrequency: null,
   heldFrequency: null,
-  chordNote: null,
-  isChord: false,
+  chordTargetString: null,
+  isChordFallback: false,
   rms: 0,
   status: 'idle',
 }
 
 const CHORD_SCAN_INTERVAL_FRAMES = 3
+const SUSPICIOUS_CHORD_CENTS = 60
 
 export function usePitchDetection({
   stream,
@@ -70,16 +74,9 @@ export function usePitchDetection({
     let audioContext: AudioContext | null = null
     let cancelled = false
     let chordScanFrame = 0
-    let chordActiveLastFrame = false
     const tracker = new TunerPitchTracker()
     const chordTracker = new ChordNoteTracker()
-    let chordSnapshot = chordTracker.process({
-      note: null,
-      frequency: null,
-      confidence: 0,
-      strongNoteCount: 0,
-      isChordLike: false,
-    })
+    let chordSnapshot = chordTracker.process(null, false)
 
     const startDetection = async () => {
       audioContext = new AudioContext()
@@ -128,56 +125,57 @@ export function usePitchDetection({
           ? detectGuitarPitch(buffer, sampleRate)
           : { frequency: null, confidence: 0, stringLabel: null }
 
+        const snapshot = tracker.process({
+          now: performance.now(),
+          rms,
+          frequency: result.frequency,
+          confidence: result.confidence,
+        })
+
         chordScanFrame += 1
         if (gateOpen && chordScanFrame >= CHORD_SCAN_INTERVAL_FRAMES) {
           chordScanFrame = 0
           analyser.getFloatFrequencyData(spectrum)
+          const chordResult = detectChordNote(
+            spectrum,
+            sampleRate,
+            analyser.fftSize,
+          )
+
+          const detectedTarget =
+            result.stringLabel !== null
+              ? getStringByLabel(result.stringLabel)
+              : null
+          const currentCents =
+            result.frequency !== null && detectedTarget !== null
+              ? getTuningForString(
+                  result.frequency,
+                  detectedTarget.frequency,
+                ).centsOff
+              : null
+          const suspiciousChordReading =
+            chordResult.isChordLike &&
+            chordResult.targetString !== null &&
+            currentCents !== null &&
+            Math.abs(currentCents) >= SUSPICIOUS_CHORD_CENTS
+
           chordSnapshot = chordTracker.process(
-            detectChordNote(
-              spectrum,
-              sampleRate,
-              analyser.fftSize,
-            ),
+            chordResult.targetString,
+            suspiciousChordReading,
           )
         } else if (!gateOpen) {
-          chordSnapshot = chordTracker.process({
-            note: null,
-            frequency: null,
-            confidence: 0,
-            strongNoteCount: 0,
-            isChordLike: false,
-          })
+          chordSnapshot = chordTracker.process(null, false)
         }
-
-        if (chordSnapshot.active && !chordActiveLastFrame) {
-          tracker.reset()
-        }
-
-        const snapshot = chordSnapshot.active
-          ? {
-              detectedString: null,
-              frequency: null,
-              status: 'stable' as const,
-              isFrozen: false,
-            }
-          : tracker.process({
-              now: performance.now(),
-              rms,
-              frequency: result.frequency,
-              confidence: result.confidence,
-            })
-
-        chordActiveLastFrame = chordSnapshot.active
 
         setFrame({
-          rawFrequency: chordSnapshot.active ? null : result.frequency,
+          rawFrequency: result.frequency,
           detectedString: snapshot.detectedString,
           responsiveFrequency: snapshot.frequency,
-          liveFrequency: chordSnapshot.active ? null : result.frequency,
+          liveFrequency: result.frequency,
           stableFrequency: snapshot.frequency,
           heldFrequency: snapshot.frequency,
-          chordNote: chordSnapshot.note,
-          isChord: chordSnapshot.active,
+          chordTargetString: chordSnapshot.targetString,
+          isChordFallback: chordSnapshot.active,
           rms,
           status: snapshot.status,
         })
