@@ -66,6 +66,9 @@ const SUBHARMONIC_PENALTY = 0.8
 const STRONG_NOTE_RATIO = 0.3
 const SECOND_NOTE_CHORD_RATIO = 0.48
 const MIN_FLOOR_MULTIPLIER = 4
+const LOCAL_PEAK_RATIO = 1.15
+const SPECTRAL_RADIUS_BINS = 2
+const SPECTRAL_SIGMA_BINS = 0.55
 
 function midiToFrequency(midi: number): number {
   return 440 * 2 ** ((midi - 69) / 12)
@@ -146,17 +149,29 @@ function bandPower(
   }
 
   const exactBin = (frequency * fftSize) / sampleRate
-  const center = Math.round(exactBin)
-  let strongestDb = Number.NEGATIVE_INFINITY
+  const center = Math.floor(exactBin)
+  let weightedPower = 0
+  let totalWeight = 0
 
-  for (let offset = -1; offset <= 1; offset++) {
-    const index = center + offset
-    if (index >= 0 && index < spectrum.length) {
-      strongestDb = Math.max(strongestDb, spectrum[index])
+  for (
+    let index = center - SPECTRAL_RADIUS_BINS;
+    index <= center + SPECTRAL_RADIUS_BINS;
+    index++
+  ) {
+    if (index < 0 || index >= spectrum.length) {
+      continue
     }
+
+    const distance = index - exactBin
+    const weight = Math.exp(
+      -(distance * distance) /
+        (2 * SPECTRAL_SIGMA_BINS * SPECTRAL_SIGMA_BINS),
+    )
+    weightedPower += dbToPower(spectrum[index]) * weight
+    totalWeight += weight
   }
 
-  return dbToPower(strongestDb)
+  return totalWeight > 0 ? weightedPower / totalWeight : 0
 }
 
 function median(values: number[]): number {
@@ -216,6 +231,20 @@ function scoreCandidate(
   }
 }
 
+function isLocalFundamentalPeak(
+  candidates: CandidateScore[],
+  index: number,
+): boolean {
+  const candidate = candidates[index]
+  const previousPower = candidates[index - 1]?.fundamentalPower ?? 0
+  const nextPower = candidates[index + 1]?.fundamentalPower ?? 0
+
+  return (
+    candidate.fundamentalPower >= previousPower * LOCAL_PEAK_RATIO &&
+    candidate.fundamentalPower >= nextPower * LOCAL_PEAK_RATIO
+  )
+}
+
 export function detectChordNote(
   spectrum: Float32Array,
   sampleRate: number,
@@ -246,7 +275,12 @@ export function detectChordNote(
   const floor = median(fundamentalPowers)
   const strongestByNote = new Map<ChromaticNoteName, CandidateScore>()
 
-  for (const candidate of candidates) {
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index]
+    if (!isLocalFundamentalPeak(candidates, index)) {
+      continue
+    }
+
     const current = strongestByNote.get(candidate.note)
     if (current === undefined || candidate.score > current.score) {
       strongestByNote.set(candidate.note, candidate)
