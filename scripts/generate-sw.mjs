@@ -22,7 +22,7 @@ async function walk(directory) {
 }
 
 const pkg = JSON.parse(await readFile('package.json', 'utf8'))
-const buildId = `${pkg.version}-${Date.now()}`
+const cacheName = `guitar-app-${pkg.version}-${Date.now()}`
 
 const files = (await walk(DIST_DIR))
   .filter((file) => path.basename(file) !== 'sw.js')
@@ -34,7 +34,7 @@ const files = (await walk(DIST_DIR))
 const precacheUrls = [...new Set([APP_BASE, ...files])]
 
 const serviceWorker = `const CACHE_PREFIX = 'guitar-app-'
-const CACHE_NAME = '${buildId}'
+const CACHE_NAME = '${cacheName}'
 const APP_BASE = '${APP_BASE}'
 const PRECACHE_URLS = ${JSON.stringify(precacheUrls, null, 2)}
 
