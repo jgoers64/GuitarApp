@@ -1,3 +1,4 @@
+import './chordFallback.test'
 import './rapidNoteDiagnostic'
 import { AUDIO_CONFIG, detectGuitarPitch } from '../src/lib/audio'
 import { TunerPitchTracker } from '../src/features/tuner/core/TunerPitchTracker'
