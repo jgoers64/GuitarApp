@@ -35,26 +35,38 @@ export function useMicrophone(): UseMicrophoneResult {
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const requestIdRef = useRef(0)
 
   const stop = useCallback(() => {
-    stopStream(streamRef.current)
+    requestIdRef.current += 1
+
+    const currentStream = streamRef.current
     streamRef.current = null
+    stopStream(currentStream)
+
     setStream(null)
     setStatus('idle')
     setError(null)
   }, [])
 
   const start = useCallback(async () => {
-    stopStream(streamRef.current)
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
+
+    const previousStream = streamRef.current
     streamRef.current = null
+    stopStream(previousStream)
+
     setStream(null)
     setStatus('requesting')
     setError(null)
 
     const availabilityError = getMicrophoneAvailabilityError()
     if (availabilityError !== null) {
-      setError(availabilityError)
-      setStatus('error')
+      if (requestId === requestIdRef.current) {
+        setError(availabilityError)
+        setStatus('error')
+      }
       return
     }
 
@@ -66,10 +78,38 @@ export function useMicrophone(): UseMicrophoneResult {
           autoGainControl: false,
         },
       })
+
+      if (
+        requestId !== requestIdRef.current ||
+        document.visibilityState === 'hidden'
+      ) {
+        stopStream(mediaStream)
+        return
+      }
+
+      const handleTrackEnded = () => {
+        if (streamRef.current !== mediaStream) {
+          return
+        }
+
+        requestIdRef.current += 1
+        streamRef.current = null
+        setStream(null)
+        setStatus('idle')
+      }
+
+      mediaStream
+        .getAudioTracks()
+        .forEach((track) => track.addEventListener('ended', handleTrackEnded))
+
       streamRef.current = mediaStream
       setStream(mediaStream)
       setStatus('active')
     } catch (err) {
+      if (requestId !== requestIdRef.current) {
+        return
+      }
+
       const message =
         err instanceof Error ? err.message : 'Microphone access failed'
       setError(message)
@@ -78,7 +118,12 @@ export function useMicrophone(): UseMicrophoneResult {
   }, [])
 
   useEffect(() => {
-    return () => stopStream(streamRef.current)
+    return () => {
+      requestIdRef.current += 1
+      const currentStream = streamRef.current
+      streamRef.current = null
+      stopStream(currentStream)
+    }
   }, [])
 
   return { status, stream, error, start, stop }
