@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
           return (
             (await caches.match(request)) ||
             (await caches.match(APP_BASE)) ||
-            caches.match(`${APP_BASE}index.html`)
+            caches.match(APP_BASE + 'index.html')
           )
         }),
     )
