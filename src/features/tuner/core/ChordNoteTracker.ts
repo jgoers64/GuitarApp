@@ -1,33 +1,37 @@
-import type {
-  ChordNoteResult,
-  ChromaticNoteName,
-} from '../../../lib/audio/detectChordNote'
+import type { GuitarStringLabel } from '../utils/noteUtils'
 
 export interface ChordDisplaySnapshot {
   active: boolean
-  note: ChromaticNoteName | null
+  targetString: GuitarStringLabel | null
 }
 
-const SWITCH_CONFIRM_SCANS = 3
-const EXIT_CONFIRM_SCANS = 4
+const ENTER_CONFIRM_SCANS = 2
+const SWITCH_CONFIRM_SCANS = 2
+const EXIT_CONFIRM_SCANS = 3
 
 export class ChordNoteTracker {
   private active = false
-  private note: ChromaticNoteName | null = null
-  private pendingNote: ChromaticNoteName | null = null
+  private targetString: GuitarStringLabel | null = null
+  private pendingTarget: GuitarStringLabel | null = null
   private pendingScans = 0
   private exitScans = 0
 
   reset(): void {
     this.active = false
-    this.note = null
-    this.pendingNote = null
+    this.targetString = null
+    this.pendingTarget = null
     this.pendingScans = 0
     this.exitScans = 0
   }
 
-  process(result: ChordNoteResult): ChordDisplaySnapshot {
-    if (!result.isChordLike || result.note === null) {
+  process(
+    candidate: GuitarStringLabel | null,
+    shouldActivate: boolean,
+  ): ChordDisplaySnapshot {
+    if (!shouldActivate || candidate === null) {
+      this.pendingTarget = null
+      this.pendingScans = 0
+
       if (this.active) {
         this.exitScans += 1
         if (this.exitScans >= EXIT_CONFIRM_SCANS) {
@@ -40,30 +44,27 @@ export class ChordNoteTracker {
 
     this.exitScans = 0
 
-    if (!this.active || this.note === null) {
-      this.active = true
-      this.note = result.note
-      this.pendingNote = null
+    if (this.active && this.targetString === candidate) {
+      this.pendingTarget = null
       this.pendingScans = 0
       return this.snapshot()
     }
 
-    if (result.note === this.note) {
-      this.pendingNote = null
-      this.pendingScans = 0
-      return this.snapshot()
-    }
-
-    if (this.pendingNote === result.note) {
+    if (this.pendingTarget === candidate) {
       this.pendingScans += 1
     } else {
-      this.pendingNote = result.note
+      this.pendingTarget = candidate
       this.pendingScans = 1
     }
 
-    if (this.pendingScans >= SWITCH_CONFIRM_SCANS) {
-      this.note = result.note
-      this.pendingNote = null
+    const requiredScans = this.active
+      ? SWITCH_CONFIRM_SCANS
+      : ENTER_CONFIRM_SCANS
+
+    if (this.pendingScans >= requiredScans) {
+      this.active = true
+      this.targetString = candidate
+      this.pendingTarget = null
       this.pendingScans = 0
     }
 
@@ -73,7 +74,7 @@ export class ChordNoteTracker {
   private snapshot(): ChordDisplaySnapshot {
     return {
       active: this.active,
-      note: this.note,
+      targetString: this.targetString,
     }
   }
 }
