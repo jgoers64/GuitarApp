@@ -53,7 +53,8 @@ const EMPTY_FRAME: PitchFrame = {
   status: 'idle',
 }
 
-const CHORD_SCAN_INTERVAL_FRAMES = 3
+const CHORD_FFT_SIZE = 16384
+const CHORD_SCAN_INTERVAL_FRAMES = 4
 const SUSPICIOUS_CHORD_CENTS = 60
 
 export function usePitchDetection({
@@ -103,17 +104,21 @@ export function usePitchDetection({
 
       const analyser = audioContext.createAnalyser()
       analyser.fftSize = AUDIO_CONFIG.FFT_SIZE
-      analyser.smoothingTimeConstant = 0.15
-      analyser.minDecibels = -110
-      analyser.maxDecibels = -20
+
+      const chordAnalyser = audioContext.createAnalyser()
+      chordAnalyser.fftSize = CHORD_FFT_SIZE
+      chordAnalyser.smoothingTimeConstant = 0.12
+      chordAnalyser.minDecibels = -110
+      chordAnalyser.maxDecibels = -20
 
       source.connect(highPass)
       highPass.connect(lowPass)
       lowPass.connect(gain)
       gain.connect(analyser)
+      gain.connect(chordAnalyser)
 
       const buffer = new Float32Array(analyser.fftSize)
-      const spectrum = new Float32Array(analyser.frequencyBinCount)
+      const spectrum = new Float32Array(chordAnalyser.frequencyBinCount)
       const sampleRate = audioContext.sampleRate
       setIsListening(true)
 
@@ -135,11 +140,11 @@ export function usePitchDetection({
         chordScanFrame += 1
         if (gateOpen && chordScanFrame >= CHORD_SCAN_INTERVAL_FRAMES) {
           chordScanFrame = 0
-          analyser.getFloatFrequencyData(spectrum)
+          chordAnalyser.getFloatFrequencyData(spectrum)
           const chordResult = detectChordNote(
             spectrum,
             sampleRate,
-            analyser.fftSize,
+            chordAnalyser.fftSize,
           )
 
           const detectedTarget =
@@ -153,7 +158,7 @@ export function usePitchDetection({
                   detectedTarget.frequency,
                 ).centsOff
               : null
-          const suspiciousChordReading =
+          const useChordFallback =
             chordResult.isChordLike &&
             chordResult.targetString !== null &&
             currentCents !== null &&
@@ -161,7 +166,7 @@ export function usePitchDetection({
 
           chordSnapshot = chordTracker.process(
             chordResult.targetString,
-            suspiciousChordReading,
+            useChordFallback,
           )
         } else if (!gateOpen) {
           chordSnapshot = chordTracker.process(null, false)
