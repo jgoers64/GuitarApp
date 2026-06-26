@@ -11,7 +11,7 @@ export function TunerPage() {
     null,
   )
 
-  const { status, stream, error, start } = useMicrophone()
+  const { status, stream, error, start, stop } = useMicrophone()
   const {
     responsiveFrequency,
     detectedString,
@@ -23,10 +23,59 @@ export function TunerPage() {
   })
 
   const isActive = status === 'active'
+  const isRequesting = status === 'requesting'
 
   useEffect(() => {
-    void start()
-  }, [start])
+    let resumeTimer: number | null = null
+
+    const clearResumeTimer = () => {
+      if (resumeTimer !== null) {
+        window.clearTimeout(resumeTimer)
+        resumeTimer = null
+      }
+    }
+
+    const resumeTuner = () => {
+      clearResumeTimer()
+
+      if (document.visibilityState !== 'visible') {
+        return
+      }
+
+      // iOS may need a short moment to reactivate audio after the standalone
+      // app returns from the Home Screen.
+      resumeTimer = window.setTimeout(() => {
+        resumeTimer = null
+        void start()
+      }, 150)
+    }
+
+    const suspendTuner = () => {
+      clearResumeTimer()
+      stop()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        suspendTuner()
+      } else {
+        resumeTuner()
+      }
+    }
+
+    resumeTuner()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pageshow', resumeTuner)
+    window.addEventListener('pagehide', suspendTuner)
+
+    return () => {
+      clearResumeTimer()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pageshow', resumeTuner)
+      window.removeEventListener('pagehide', suspendTuner)
+      stop()
+    }
+  }, [start, stop])
 
   function handleAutoModeChange(enabled: boolean) {
     setAutoMode(enabled)
@@ -61,6 +110,17 @@ export function TunerPage() {
           selectedString={selectedString}
           onStringSelect={handleStringSelect}
         />
+
+        {!isActive && (
+          <button
+            type="button"
+            className="mic-toggle"
+            onClick={() => void start()}
+            disabled={isRequesting}
+          >
+            {isRequesting ? 'Starting…' : 'Resume Tuner'}
+          </button>
+        )}
       </main>
     </>
   )
