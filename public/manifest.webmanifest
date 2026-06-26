@@ -1,0 +1,19 @@
+{
+  "name": "Guitar App",
+  "short_name": "Guitar",
+  "description": "A guitar tuner and growing collection of guitar tools.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "icons": [
+    {
+      "src": "./guitar-app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
